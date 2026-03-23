@@ -84,6 +84,24 @@ def test_remap_image_to_convex_grid_and_back_preserves_centerline_signal():
     assert fan.shape == (4, 5)
     assert restored.shape == image.shape
     assert float(restored[:, 50].max()) > 0.5
+    rows = np.array([0.0, 0.0, 79.0], dtype=np.float32)
+    cols = np.array([0.0, 99.0, 0.0], dtype=np.float32)
+    outside_mask = ~convex_valid_pixel_mask(rows, cols, geometry)
+    assert outside_mask.tolist() == [True, True, True]
+    assert np.allclose(restored[0, 0], 0.0)
+
+
+def test_remap_convex_grid_to_image_zeroes_pixels_outside_fan_support():
+    geometry = make_convex_geometry()
+    fan = np.ones((4, 5), dtype=np.float32)
+    restored = remap_convex_grid_to_image(fan, geometry, (80, 100))
+
+    mask = convex_valid_pixel_mask(
+        *np.meshgrid(np.arange(80, dtype=np.float32), np.arange(100, dtype=np.float32), indexing="ij"),
+        geometry,
+    )
+    assert float(restored[~mask].max()) == 0.0
+    assert float(restored[mask].min()) > 0.0
 
 
 def test_convex_valid_pixel_mask_excludes_points_outside_fan():
