@@ -132,6 +132,14 @@ The intended end state is:
 - T42
 - T43
 
+### Milestone 9: Convex MIP Support
+
+- T44
+- T45
+- T46
+- T47
+- T48
+
 ## Multi-Sweep Follow-Up Tickets
 
 The tickets below extend the single-sweep viewer to support multiple tracked
@@ -221,3 +229,30 @@ Additional dependency notes:
 - T41 depends on T36 and T40.
 - T42 depends on T37 through T41.
 - T43 depends on T36 through T42.
+
+## Convex MIP Support Tickets
+
+These tickets cover selectively migrating the legacy convex MIP rendering path
+after baseline convex support is already working in the current repo.
+
+Important implementation rule:
+
+- do not start MIP migration until the non-MIP convex path is working and
+  tested
+- keep MIP support optional and explicitly selectable
+
+Recommended order:
+
+44. [T44 - Define the Convex MIP Scope and Runtime Contract](T44-define-convex-mip-scope-and-runtime-contract.md)
+45. [T45 - Port the Convex MIP Sampling and Rendering Backend](T45-port-the-convex-mip-sampling-and-rendering-backend.md)
+46. [T46 - Add Convex MIP Configuration and CLI Wiring](T46-add-convex-mip-configuration-and-cli-wiring.md)
+47. [T47 - Add Convex MIP Viewer and Output Support](T47-add-convex-mip-viewer-and-output-support.md)
+48. [T48 - Add Convex MIP Regression Tests and Documentation](T48-add-convex-mip-regression-tests-and-documentation.md)
+
+Additional dependency notes:
+
+- T44 depends on T39 and should be completed before any MIP code is ported.
+- T45 depends on T44.
+- T46 depends on T44 and T45.
+- T47 depends on T45 and T46.
+- T48 depends on T44 through T47.
