@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from ultranerf.probe_geometry import ProbeGeometry, remap_convex_grid_to_image
 from ultranerf.visualization.transforms import ensure_pose_matrix
 
 
@@ -61,6 +62,8 @@ class NerfSession:
     args: Any
     device: Any
     image_shape: tuple[int, int]
+    display_image_shape: tuple[int, int] | None
+    probe_geometry: ProbeGeometry | None
     probe_width_mm: float
     probe_depth_mm: float
     render_kwargs: dict[str, Any]
@@ -76,6 +79,8 @@ class NerfSession:
         config_path: str,
         checkpoint_path: str,
         image_shape: tuple[int, int],
+        display_image_shape: tuple[int, int] | None = None,
+        probe_geometry: ProbeGeometry | None = None,
         probe_width_mm: float,
         probe_depth_mm: float,
         device: str | None = None,
@@ -89,10 +94,16 @@ class NerfSession:
         _, render_kwargs_test, _, _, _ = runtime.create_nerf(args, device=runtime_device, mode="test")
 
         height, width = image_shape
+        effective_geometry = probe_geometry
         probe_width_m = float(probe_width_mm) * 0.001
         probe_depth_m = float(probe_depth_mm) * 0.001
-        sw_m = probe_width_m / float(width)
-        sh_m = probe_depth_m / float(height)
+        if effective_geometry is not None and effective_geometry.is_convex:
+            sw_m = float(effective_geometry.convex_scale_x_mm) * 0.001
+            sh_m = float(effective_geometry.convex_scale_y_mm) * 0.001
+            probe_depth_m = (effective_geometry.convex_outer_radius_mm - effective_geometry.convex_inner_radius_mm) * 0.001
+        else:
+            sw_m = probe_width_m / float(width)
+            sh_m = probe_depth_m / float(height)
         near_m = 0.0
         far_m = probe_depth_m
         render_kwargs = dict(render_kwargs_test)
@@ -103,6 +114,8 @@ class NerfSession:
             args=args,
             device=runtime_device,
             image_shape=(height, width),
+            display_image_shape=display_image_shape,
+            probe_geometry=probe_geometry,
             probe_width_mm=float(probe_width_mm),
             probe_depth_mm=float(probe_depth_mm),
             render_kwargs=render_kwargs,
@@ -118,7 +131,7 @@ class NerfSession:
         pose_tensor = self.runtime.torch.from_numpy(pose_m[:3, :4]).to(self.device).unsqueeze(0)
         kwargs = dict(self.render_kwargs)
         kwargs.update(render_overrides)
-        return self.runtime.render_us(
+        rendered = self.runtime.render_us(
             self.image_shape[0],
             self.image_shape[1],
             self.sw_m,
@@ -127,3 +140,29 @@ class NerfSession:
             chunk=self.args.chunk,
             **kwargs,
         )
+        if self.probe_geometry is not None and self.probe_geometry.is_convex and self.display_image_shape is not None:
+            return self._remap_convex_render_payload(rendered)
+        return rendered
+
+    def _remap_convex_render_payload(self, rendered_output: dict[str, Any]) -> dict[str, Any]:
+        remapped: dict[str, Any] = {}
+        for key, value in rendered_output.items():
+            array = value
+            try:
+                np_value = np.asarray(value.detach().cpu() if hasattr(value, "detach") else value, dtype=np.float32)
+            except Exception:
+                remapped[key] = value
+                continue
+            squeezed = np.squeeze(np_value)
+            if squeezed.ndim != 2:
+                remapped[key] = value
+                continue
+            remapped_image = remap_convex_grid_to_image(
+                squeezed,
+                self.probe_geometry,
+                self.display_image_shape,
+                method="nearest",
+            )
+            tensor = self.runtime.torch.from_numpy(remapped_image).to(self.device).unsqueeze(0).unsqueeze(0)
+            remapped[key] = tensor
+        return remapped

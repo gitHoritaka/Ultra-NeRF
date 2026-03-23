@@ -1,7 +1,7 @@
 import numpy as np
 
+from ultranerf.probe_geometry import ProbeGeometry
 from ultranerf.visualization.transforms import (
-    ProbeGeometry,
     VolumeGeometry,
     ensure_pose_matrix,
     invert_pose,
@@ -98,3 +98,52 @@ def test_pose_to_axes_returns_origin_and_basis_vectors():
     assert np.allclose(x_axis, np.array([1.0, 0.0, 0.0], dtype=np.float32))
     assert np.allclose(y_axis, np.array([0.0, 1.0, 0.0], dtype=np.float32))
     assert np.allclose(z_axis, np.array([0.0, 0.0, 1.0], dtype=np.float32))
+
+
+def test_pixel_to_probe_local_supports_convex_image_coordinates():
+    geometry = ProbeGeometry(
+        width_mm=80.0,
+        depth_mm=140.0,
+        probe_type="convex",
+        convex_center_x=50.0,
+        convex_center_y=10.0,
+        convex_angle_deg=60.0,
+        convex_outer_radius_px=40.0,
+        convex_inner_radius_px=10.0,
+        convex_scale_x_mm=1.0,
+        convex_scale_y_mm=2.0,
+        convex_n_rays=5,
+        convex_n_samples=4,
+    )
+    pts = pixel_to_probe_local(
+        row=np.array([10.0, 20.0], dtype=np.float32),
+        col=np.array([50.0, 60.0], dtype=np.float32),
+        image_shape=(80, 100),
+        geometry=geometry,
+    )
+
+    assert np.allclose(pts[0], np.array([0.0, 0.0, 0.0], dtype=np.float32))
+    assert np.allclose(pts[1], np.array([10.0, 20.0, 0.0], dtype=np.float32))
+
+
+def test_probe_plane_corners_support_convex_sector_bounds():
+    geometry = ProbeGeometry(
+        width_mm=80.0,
+        depth_mm=140.0,
+        probe_type="convex",
+        convex_center_x=0.0,
+        convex_center_y=0.0,
+        convex_angle_deg=60.0,
+        convex_outer_radius_px=40.0,
+        convex_inner_radius_px=10.0,
+        convex_scale_x_mm=1.0,
+        convex_scale_y_mm=1.0,
+        convex_n_rays=5,
+        convex_n_samples=4,
+    )
+
+    corners = probe_plane_corners(np.eye(4, dtype=np.float32), geometry)
+
+    assert corners.shape == (4, 3)
+    assert np.isclose(np.linalg.norm(corners[0, :2]), geometry.convex_inner_radius_mm, atol=1e-5)
+    assert np.isclose(np.linalg.norm(corners[2, :2]), geometry.convex_outer_radius_mm, atol=1e-5)

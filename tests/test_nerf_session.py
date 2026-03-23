@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+from ultranerf.probe_geometry import ProbeGeometry
 from ultranerf.visualization.nerf_session import NerfRuntime, NerfSession, pose_mm_to_model_pose_m
 
 
@@ -99,3 +100,48 @@ def test_nerf_session_render_pose_calls_runtime_with_converted_pose():
     assert render_call["kwargs"]["near"] == 0.0
     assert render_call["kwargs"]["far"] == 0.04
     assert "intensity_map" in output
+
+
+def test_nerf_session_remaps_convex_outputs_for_display():
+    call_log = {}
+    runtime = make_runtime(call_log)
+    convex_geometry = ProbeGeometry(
+        width_mm=80.0,
+        depth_mm=140.0,
+        probe_type="convex",
+        convex_center_x=5.0,
+        convex_center_y=0.0,
+        convex_angle_deg=60.0,
+        convex_outer_radius_px=6.0,
+        convex_inner_radius_px=1.0,
+        convex_scale_x_mm=1.0,
+        convex_scale_y_mm=1.0,
+        convex_n_rays=5,
+        convex_n_samples=4,
+    )
+
+    def render_us(H, W, sw, sh, c2w=None, chunk=None, **kwargs):
+        return {"intensity_map": torch.ones((1, 1, H, W), dtype=torch.float32)}
+
+    runtime = NerfRuntime(
+        torch=torch,
+        config_parser=lambda: FakeParser(),
+        create_nerf=make_runtime(call_log).create_nerf,
+        render_us=render_us,
+    )
+
+    session = NerfSession.from_checkpoint(
+        config_path="configs/config_base_nerf.txt",
+        checkpoint_path="logs/example/001000.tar",
+        image_shape=(4, 5),
+        display_image_shape=(12, 12),
+        probe_geometry=convex_geometry,
+        probe_width_mm=80.0,
+        probe_depth_mm=140.0,
+        device="cpu",
+        runtime=runtime,
+    )
+
+    rendered = session.render_pose(np.eye(4, dtype=np.float32))
+
+    assert tuple(rendered["intensity_map"].shape) == (1, 1, 12, 12)

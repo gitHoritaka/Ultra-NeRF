@@ -244,7 +244,10 @@ def resolve_multi_sweep_render_image_shape(
 ) -> tuple[int, int]:
     """Resolve the NeRF render image size from the active sweep."""
     active_sweep = scene.get_sweep(active_sweep_id or scene.active_sweep_id)
-    height, width = active_sweep.image_shape
+    if active_sweep.probe_geometry.is_convex:
+        height, width = active_sweep.probe_geometry.convex_render_shape
+    else:
+        height, width = active_sweep.image_shape
     if render_height is not None:
         height = int(render_height)
     if render_width is not None:
@@ -279,6 +282,8 @@ def build_multi_sweep_render_controller(
         config_path=str(config_path),
         checkpoint_path=str(checkpoint_path),
         image_shape=image_shape,
+        display_image_shape=active_sweep.image_shape,
+        probe_geometry=active_sweep.probe_geometry,
         probe_width_mm=active_sweep.probe_geometry.width_mm,
         probe_depth_mm=active_sweep.probe_geometry.depth_mm,
         device=nerf_config.device,

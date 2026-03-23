@@ -24,7 +24,37 @@ def config_parser():
     parser.add_argument("--loss", type=str, default="l2")
     parser.add_argument("--probe_depth", type=float, default=140.0)
     parser.add_argument("--probe_width", type=float, default=80.0)
+    parser.add_argument(
+        "--probe_type",
+        type=str,
+        default="linear",
+        choices=("linear", "convex"),
+        help="Probe geometry model used by training, rendering, and visualization",
+    )
     parser.add_argument("--output_ch", type=int, default=5)
+    parser.add_argument("--convex_center_x", type=float, default=0.0)
+    parser.add_argument("--convex_center_y", type=float, default=0.0)
+    parser.add_argument("--convex_angle_deg", type=float, default=70.0)
+    parser.add_argument("--convex_outer_radius_px", type=float, default=860.0)
+    parser.add_argument("--convex_inner_radius_px", type=float, default=217.0)
+    parser.add_argument("--convex_scale_x_mm", type=float, default=0.233)
+    parser.add_argument("--convex_scale_y_mm", type=float, default=0.233)
+    parser.add_argument("--convex_n_rays", type=int, default=250)
+    parser.add_argument("--convex_n_samples", type=int, default=600)
+    parser.add_argument(
+        "--convex_sampling_strategy",
+        type=str,
+        default="uniform_fan",
+        choices=("uniform_fan",),
+        help="Convex sampling strategy. Only uniform_fan is supported in the current repo.",
+    )
+    parser.add_argument(
+        "--render_mode",
+        type=str,
+        default="default",
+        choices=("default", "convex_mip"),
+        help="Rendering backend selection. convex_mip is reserved for the legacy MIP migration path.",
+    )
 
     parser.add_argument("--tensorboard", action="store_true")
     parser.add_argument("--confmap", type=bool, default=False)

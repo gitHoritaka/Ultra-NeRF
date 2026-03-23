@@ -20,6 +20,7 @@ from PIL import Image
 
 import run_ultranerf as run_nerf_ultrasound
 from ultranerf.load_us import load_us_data
+from ultranerf.probe_geometry import build_probe_geometry_from_args
 import open3d as o3d
 import matplotlib.cm as cm
 
@@ -44,15 +45,22 @@ if __name__ == "__main__":
     # For the above code snippet, checkpoints are saved as {step}.tar
     ft_path = os.path.join(args_console.logdir, args_console.expname, model_no + ".tar")
     args = parser.parse_args(["--config", config, "--ft_path", ft_path])
+    probe_geometry = build_probe_geometry_from_args(args)
+    if probe_geometry.is_convex:
+        args.N_samples = int(probe_geometry.convex_n_samples)
 
     print("Loaded args")
 
     model_name = os.path.basename(args.datadir)
     images, poses, i_test = load_us_data(args.datadir)
 
-    H, W = images[0].shape
-    H = int(H)
-    W = int(W)
+    raw_H, raw_W = images[0].shape
+    if probe_geometry.is_convex:
+        H = int(probe_geometry.convex_n_samples)
+        W = int(probe_geometry.convex_n_rays)
+    else:
+        H = int(raw_H)
+        W = int(raw_W)
 
     images = images.astype(np.float32)
     poses = poses.astype(np.float32)
@@ -62,7 +70,10 @@ if __name__ == "__main__":
     print(poses.shape)
 
     near = 0.0
-    far = args.probe_depth * 0.001
+    if probe_geometry.is_convex:
+        far = (probe_geometry.convex_outer_radius_mm - probe_geometry.convex_inner_radius_mm) * 0.001
+    else:
+        far = args.probe_depth * 0.001
 
     # Create nerf model
     if args.reconstruction:
@@ -82,8 +93,12 @@ if __name__ == "__main__":
     print("Render kwargs:")
     pprint.pprint(render_kwargs_test)
 
-    sw = args.probe_width * 0.001 / float(W)
-    sh = args.probe_depth * 0.001 / float(H)
+    if probe_geometry.is_convex:
+        sw = float(probe_geometry.convex_scale_x_mm) * 0.001
+        sh = float(probe_geometry.convex_scale_y_mm) * 0.001
+    else:
+        sw = args.probe_width * 0.001 / float(W)
+        sh = args.probe_depth * 0.001 / float(H)
 
     # If you want a downsample factor, set here. For now, just keep as original.
     # down = 4

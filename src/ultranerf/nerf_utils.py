@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from ultranerf.model import NeRF, BARF, PoseRefine, Reconstruction
+from ultranerf.probe_geometry import ProbeGeometry, build_probe_geometry_from_args
 from ultranerf.rendering import render_rays_us, render_rays_us_with_reconstruction, render_rays_us_with_reconstruction_pts
 
 # Misc
@@ -105,6 +106,45 @@ def get_rays_us_linear(H, W, sw, sh, c2w):
     rays_d = dirs_r.expand_as(rays_o)
 
     return rays_o, rays_d
+
+
+def get_rays_us_convex(
+    geometry: ProbeGeometry,
+    c2w: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Generate convex fan rays in world coordinates."""
+    if not geometry.is_convex:
+        raise ValueError("get_rays_us_convex requires a convex probe geometry")
+    t = c2w[:3, -1]
+    R = c2w[:3, :3]
+    fan_half = torch.deg2rad(torch.tensor(float(geometry.convex_angle_deg), dtype=torch.float32, device=c2w.device)) * 0.5
+    angles = torch.linspace(-fan_half, fan_half, steps=int(geometry.convex_n_rays), device=c2w.device)
+    dirs_base = torch.stack(
+        [torch.sin(angles), torch.cos(angles), torch.zeros_like(angles)],
+        dim=-1,
+    )
+    origins_base = dirs_base.clone()
+    origins_base[:, 0] *= float(geometry.convex_inner_radius_mm) * 0.001
+    origins_base[:, 1] *= float(geometry.convex_inner_radius_mm) * 0.001
+
+    rays_o = (R @ origins_base.transpose(0, 1)).transpose(0, 1) + t
+    rays_d = (R @ dirs_base.transpose(0, 1)).transpose(0, 1)
+    return rays_o, rays_d
+
+
+def get_rays_us(
+    H: int,
+    W: int,
+    sw: float,
+    sh: float,
+    c2w: torch.Tensor,
+    probe_geometry: ProbeGeometry | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Dispatch ray generation by probe geometry."""
+    geometry = probe_geometry or ProbeGeometry(width_mm=float(W) * float(sw) * 1000.0, depth_mm=float(H) * float(sh) * 1000.0)
+    if geometry.is_convex:
+        return get_rays_us_convex(geometry, c2w)
+    return get_rays_us_linear(H, W, sw, sh, c2w)
 
 
 # Hierarchical sampling (section 5.2)
@@ -216,6 +256,9 @@ def batchify_rays(rays_flat, chunk=1024 * 32, **kwargs):
 
 def create_nets_for_reconstruction(args, device, mode="train"):
     """Instantiate NeRF's MLP model."""
+    probe_geometry = build_probe_geometry_from_args(args)
+    if probe_geometry.is_convex:
+        args.N_samples = int(probe_geometry.convex_n_samples)
     embed_fn, input_ch = get_embedder(args.multires, device, args.i_embed)
     if args.rec_only_theta or args.rec_only_occ:
         embed_fn_rec, input_ch_rec = get_embedder(args.multires, device, args.i_embed, input_dim=3)
@@ -317,7 +360,8 @@ def create_nets_for_reconstruction(args, device, mode="train"):
         "network_query_fn_rec": network_query_fn_rec,
         "N_samples": args.N_samples,
         "network_fn": model,
-        "network_rec": model_rec
+        "network_rec": model_rec,
+        "probe_geometry": probe_geometry,
     }
 
     render_kwargs_test = {k: render_kwargs_train[k] for k in render_kwargs_train}
@@ -331,6 +375,9 @@ def create_nets_for_reconstruction(args, device, mode="train"):
 
 def create_nerf(args, device, mode="train"):
     """Instantiate NeRF's MLP model."""
+    probe_geometry = build_probe_geometry_from_args(args)
+    if probe_geometry.is_convex:
+        args.N_samples = int(probe_geometry.convex_n_samples)
     embed_fn, input_ch = get_embedder(args.multires, device, args.i_embed)
     if args.rec_only_theta or args.rec_only_occ:
         embed_fn_rec, input_ch_rec = get_embedder(args.multires, device, args.i_embed, input_dim=3)
@@ -426,7 +473,8 @@ def create_nerf(args, device, mode="train"):
         "network_query_fn_rec": network_query_fn_rec,
         "N_samples": args.N_samples,
         "network_fn": model,
-        "network_rec": model_rec
+        "network_rec": model_rec,
+        "probe_geometry": probe_geometry,
     }
 
     render_kwargs_test = {k: render_kwargs_train[k] for k in render_kwargs_train}
@@ -549,13 +597,14 @@ def render_us(
     rays_o = None
     rays_d = None
 
+    probe_geometry = kwargs.pop("probe_geometry", None)
     if c2w is not None:
         # Special case to render full image
         for c in c2w:
             if rays_o is None and rays_d is None:
-                rays_o, rays_d = get_rays_us_linear(H, W, sw, sh, c)
+                rays_o, rays_d = get_rays_us(H, W, sw, sh, c, probe_geometry=probe_geometry)
             else:
-                o, d = get_rays_us_linear(H, W, sw, sh, c)
+                o, d = get_rays_us(H, W, sw, sh, c, probe_geometry=probe_geometry)
                 rays_o = torch.concatenate((rays_o, o))  # type: ignore
                 rays_d = torch.concatenate((rays_d, d))  # type: ignore
     else:
@@ -627,7 +676,7 @@ def compute_regularization(rendering_output, reg_funcs, weights=(0.01, 0.00001, 
     return reg
 
 def compute_pts_from_pose(H, W, sw, sh, pose, near, far):
-    o, d = get_rays_us_linear(H, W, sw, sh, pose)
+    o, d = get_rays_us(H, W, sw, sh, pose)
     o = o.reshape(-1, 3).float()
     d = d.reshape(-1, 3).float()
     # Decide where to sample along each ray

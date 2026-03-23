@@ -1,11 +1,12 @@
 import numpy as np
 
+from ultranerf.probe_geometry import ProbeGeometry
 from ultranerf.visualization.sweep_volume import (
     compute_sweep_bounds_mm,
     fuse_sweeps_to_volume,
     volume_geometry_from_bounds_mm,
 )
-from ultranerf.visualization.transforms import ProbeGeometry, VolumeGeometry
+from ultranerf.visualization.transforms import VolumeGeometry
 
 
 def translation_pose(tx: float, ty: float, tz: float) -> np.ndarray:
@@ -167,3 +168,35 @@ def test_fuse_sweeps_to_volume_skips_nonfinite_samples():
 
     assert np.allclose(fused.scalar_volume, expected_scalar)
     assert np.allclose(fused.weight_volume, expected_weights)
+
+
+def test_fuse_sweeps_to_volume_filters_pixels_outside_convex_fan():
+    images = np.zeros((1, 5, 5), dtype=np.float32)
+    images[0, 2:, 2] = 1.0
+    poses = np.stack([np.eye(4, dtype=np.float32)], axis=0)
+    probe_geometry = ProbeGeometry(
+        width_mm=20.0,
+        depth_mm=20.0,
+        probe_type="convex",
+        convex_center_x=2.0,
+        convex_center_y=0.0,
+        convex_angle_deg=40.0,
+        convex_outer_radius_px=4.0,
+        convex_inner_radius_px=1.0,
+        convex_scale_x_mm=1.0,
+        convex_scale_y_mm=1.0,
+        convex_n_rays=3,
+        convex_n_samples=4,
+    )
+    volume_geometry = VolumeGeometry(origin_mm=np.array([-2.0, 0.0, 0.0]), spacing_mm=np.array([1.0, 1.0, 1.0]))
+
+    fused = fuse_sweeps_to_volume(
+        images=images,
+        poses_probe_to_world=poses,
+        probe_geometry=probe_geometry,
+        volume_geometry=volume_geometry,
+        volume_shape=(5, 5, 1),
+    )
+
+    assert float(fused.weight_volume.sum()) > 0.0
+    assert np.all(fused.weight_volume[:, 0, :] == 0.0)

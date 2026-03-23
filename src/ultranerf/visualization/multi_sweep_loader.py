@@ -8,8 +8,9 @@ from typing import Any
 
 import numpy as np
 
+from ultranerf.probe_geometry import ProbeGeometry
 from ultranerf.visualization.multi_sweep import MultiSweepScene, SweepRecord
-from ultranerf.visualization.transforms import ProbeGeometry, ensure_pose_matrix
+from ultranerf.visualization.transforms import ensure_pose_matrix
 
 
 def _load_npy_array(path: Path) -> np.ndarray:
@@ -27,6 +28,16 @@ def _parse_probe_geometry(manifest: dict[str, Any], probe_geometry: ProbeGeometr
     return ProbeGeometry(
         width_mm=float(geometry_data["width_mm"]),
         depth_mm=float(geometry_data["depth_mm"]),
+        probe_type=str(geometry_data.get("probe_type", "linear")),
+        convex_center_x=float(geometry_data["convex_center_x"]) if geometry_data.get("convex_center_x") is not None else None,
+        convex_center_y=float(geometry_data["convex_center_y"]) if geometry_data.get("convex_center_y") is not None else None,
+        convex_angle_deg=float(geometry_data["convex_angle_deg"]) if geometry_data.get("convex_angle_deg") is not None else None,
+        convex_outer_radius_px=float(geometry_data["convex_outer_radius_px"]) if geometry_data.get("convex_outer_radius_px") is not None else None,
+        convex_inner_radius_px=float(geometry_data["convex_inner_radius_px"]) if geometry_data.get("convex_inner_radius_px") is not None else None,
+        convex_scale_x_mm=float(geometry_data["convex_scale_x_mm"]) if geometry_data.get("convex_scale_x_mm") is not None else None,
+        convex_scale_y_mm=float(geometry_data["convex_scale_y_mm"]) if geometry_data.get("convex_scale_y_mm") is not None else None,
+        convex_n_rays=int(geometry_data["convex_n_rays"]) if geometry_data.get("convex_n_rays") is not None else None,
+        convex_n_samples=int(geometry_data["convex_n_samples"]) if geometry_data.get("convex_n_samples") is not None else None,
     )
 
 

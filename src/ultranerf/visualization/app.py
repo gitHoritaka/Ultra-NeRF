@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 
+from ultranerf.probe_geometry import ProbeGeometry
 from ultranerf.visualization.render_controller import RenderController, RenderTriggerMode
 from ultranerf.visualization.sweep_volume import (
     FusionDevice,
@@ -18,7 +19,6 @@ from ultranerf.visualization.sweep_volume import (
     volume_geometry_from_bounds_mm,
 )
 from ultranerf.visualization.trajectory import TrajectoryOverlay, build_trajectory_overlay
-from ultranerf.visualization.transforms import ProbeGeometry
 from ultranerf.visualization.volume_cache import cache_metadata_matches, load_fused_volume_cache, save_fused_volume_cache
 from ultranerf.visualization.volume_viewer import launch_basic_volume_viewer
 
@@ -91,7 +91,20 @@ def build_or_load_fused_volume(
     }
     metadata = {
         "dataset_id": str(dataset_path.resolve()),
-        "probe_geometry": {"width_mm": probe_geometry.width_mm, "depth_mm": probe_geometry.depth_mm},
+        "probe_geometry": {
+            "width_mm": probe_geometry.width_mm,
+            "depth_mm": probe_geometry.depth_mm,
+            "probe_type": probe_geometry.probe_type,
+            "convex_center_x": probe_geometry.convex_center_x,
+            "convex_center_y": probe_geometry.convex_center_y,
+            "convex_angle_deg": probe_geometry.convex_angle_deg,
+            "convex_outer_radius_px": probe_geometry.convex_outer_radius_px,
+            "convex_inner_radius_px": probe_geometry.convex_inner_radius_px,
+            "convex_scale_x_mm": probe_geometry.convex_scale_x_mm,
+            "convex_scale_y_mm": probe_geometry.convex_scale_y_mm,
+            "convex_n_rays": probe_geometry.convex_n_rays,
+            "convex_n_samples": probe_geometry.convex_n_samples,
+        },
         "fusion_params": fusion_params,
     }
 
@@ -133,8 +146,14 @@ def resolve_render_image_shape(
     image_array = np.asarray(images)
     if image_array.ndim < 3:
         raise ValueError("images must have shape (N, H, W)")
-    height = int(render_height) if render_height is not None else int(image_array.shape[1])
-    width = int(render_width) if render_width is not None else int(image_array.shape[2])
+    if isinstance(render_height, int):
+        height = int(render_height)
+    else:
+        height = int(image_array.shape[1])
+    if isinstance(render_width, int):
+        width = int(render_width)
+    else:
+        width = int(image_array.shape[2])
     if height <= 0 or width <= 0:
         raise ValueError("render_height and render_width must be positive")
     return (height, width)
@@ -159,11 +178,18 @@ def build_render_controller(
 
         nerf_session_factory = NerfSession.from_checkpoint
 
-    image_shape = nerf_config.render_image_shape or resolve_render_image_shape(state.images)
+    image_shape = nerf_config.render_image_shape
+    if image_shape is None:
+        if state.probe_geometry.is_convex:
+            image_shape = state.probe_geometry.convex_render_shape
+        else:
+            image_shape = resolve_render_image_shape(state.images)
     nerf_session = nerf_session_factory(
         config_path=str(config_path),
         checkpoint_path=str(checkpoint_path),
         image_shape=image_shape,
+        display_image_shape=(int(state.images.shape[1]), int(state.images.shape[2])),
+        probe_geometry=state.probe_geometry,
         probe_width_mm=state.probe_geometry.width_mm,
         probe_depth_mm=state.probe_geometry.depth_mm,
         device=nerf_config.device,
@@ -180,6 +206,7 @@ def prepare_visualization_app(
     dataset_dir: str | Path,
     probe_width_mm: float,
     probe_depth_mm: float,
+    probe_geometry: ProbeGeometry | None = None,
     spacing_mm: tuple[float, float, float] = (1.0, 1.0, 1.0),
     pixel_stride: tuple[int, int] = (2, 2),
     cache_path: str | Path | None = None,
@@ -188,7 +215,7 @@ def prepare_visualization_app(
     reduction_mode: FusionReductionMode = "max",
 ) -> VisualizationAppState:
     """Prepare the fused volume and trajectory for the visualization app."""
-    probe_geometry = ProbeGeometry(width_mm=float(probe_width_mm), depth_mm=float(probe_depth_mm))
+    probe_geometry = probe_geometry or ProbeGeometry(width_mm=float(probe_width_mm), depth_mm=float(probe_depth_mm))
     fused_volume, cache, cache_used, images, poses_mm = build_or_load_fused_volume(
         dataset_dir=dataset_dir,
         probe_geometry=probe_geometry,

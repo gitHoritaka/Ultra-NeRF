@@ -38,6 +38,7 @@ from tqdm import trange
 
 from ultranerf.load_us import load_us_data
 from ultranerf.nerf_utils import create_nerf, img2mse, render_us, compute_loss, compute_regularization
+from ultranerf.probe_geometry import build_probe_geometry_from_args, remap_image_to_convex_grid
 from ultranerf.unerf_config import config_parser
 
 if torch.cuda.is_available():
@@ -50,6 +51,9 @@ def train():
 
     parser = config_parser()
     args = parser.parse_args()
+    probe_geometry = build_probe_geometry_from_args(args)
+    if probe_geometry.is_convex:
+        args.N_samples = int(probe_geometry.convex_n_samples)
 
     if args.random_seed == 0:
         print("Setting deterministic behaviour")
@@ -86,12 +90,20 @@ def train():
     # It is possible to normalize poses and remove scaling.
     scaling = 0.001
     near = 0
-    probe_depth = args.probe_depth * scaling
-    probe_width = args.probe_width * scaling
-    far = probe_depth
-    H, W = images.shape[1], images.shape[2]
-    sy = probe_depth / float(H)
-    sx = probe_width / float(W)
+    raw_H, raw_W = images.shape[1], images.shape[2]
+    if probe_geometry.is_convex:
+        H = int(probe_geometry.convex_n_samples)
+        W = int(probe_geometry.convex_n_rays)
+        sy = float(probe_geometry.convex_scale_y_mm) * scaling
+        sx = float(probe_geometry.convex_scale_x_mm) * scaling
+        far = (probe_geometry.convex_outer_radius_mm - probe_geometry.convex_inner_radius_mm) * scaling
+    else:
+        probe_depth = args.probe_depth * scaling
+        probe_width = args.probe_width * scaling
+        far = probe_depth
+        H, W = raw_H, raw_W
+        sy = probe_depth / float(H)
+        sx = probe_width / float(W)
     sh = sy
     sw = sx
 
@@ -160,7 +172,10 @@ def train():
         )  # Why? This does not guarantee that all images are used --> probably a weighted random would be better,
         # or removing from a temporary set as long as it's not empty
 
-        target = torch.Tensor(images[img_i]).to(device).unsqueeze(0).unsqueeze(0)
+        target_array = images[img_i]
+        if probe_geometry.is_convex:
+            target_array = remap_image_to_convex_grid(target_array, probe_geometry)
+        target = torch.Tensor(target_array).to(device).unsqueeze(0).unsqueeze(0)
         pose = torch.from_numpy(poses[img_i, :3, :4]).to(device).unsqueeze(0)
 
         #####  Core optimization loop  #####

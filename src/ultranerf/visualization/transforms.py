@@ -12,13 +12,7 @@ from typing import Tuple
 
 import numpy as np
 
-
-@dataclass(frozen=True)
-class ProbeGeometry:
-    """Physical probe geometry in millimeters."""
-
-    width_mm: float
-    depth_mm: float
+from ultranerf.probe_geometry import ProbeGeometry
 
 
 @dataclass(frozen=True)
@@ -86,6 +80,14 @@ def pixel_to_probe_local(
 
     Pixel centers are used for the conversion.
     """
+    if geometry.is_convex:
+        row_arr = np.asarray(row, dtype=np.float32)
+        col_arr = np.asarray(col, dtype=np.float32)
+        lateral = (col_arr - float(geometry.convex_center_x)) * float(geometry.convex_scale_x_mm)
+        depth = (row_arr - float(geometry.convex_center_y)) * float(geometry.convex_scale_y_mm)
+        zeros = np.zeros_like(lateral, dtype=np.float32)
+        return np.stack([lateral, depth, zeros], axis=-1).astype(np.float32)
+
     height, width = image_shape
     row_arr = np.asarray(row, dtype=np.float32)
     col_arr = np.asarray(col, dtype=np.float32)
@@ -141,16 +143,31 @@ def probe_plane_corners(
     - bottom-right
     - bottom-left
     """
-    half_width = geometry.width_mm / 2.0
-    local_corners = np.array(
-        [
-            [-half_width, 0.0, 0.0],
-            [half_width, 0.0, 0.0],
-            [half_width, geometry.depth_mm, 0.0],
-            [-half_width, geometry.depth_mm, 0.0],
-        ],
-        dtype=np.float32,
-    )
+    if geometry.is_convex:
+        half_angle = np.deg2rad(float(geometry.convex_angle_deg)) * 0.5
+        inner = geometry.convex_inner_radius_mm
+        outer = geometry.convex_outer_radius_mm
+        angles = np.array([-half_angle, half_angle, half_angle, -half_angle], dtype=np.float32)
+        radii = np.array([inner, inner, outer, outer], dtype=np.float32)
+        local_corners = np.stack(
+            [
+                np.sin(angles) * radii,
+                np.cos(angles) * radii,
+                np.zeros_like(radii),
+            ],
+            axis=-1,
+        ).astype(np.float32)
+    else:
+        half_width = geometry.width_mm / 2.0
+        local_corners = np.array(
+            [
+                [-half_width, 0.0, 0.0],
+                [half_width, 0.0, 0.0],
+                [half_width, geometry.depth_mm, 0.0],
+                [-half_width, geometry.depth_mm, 0.0],
+            ],
+            dtype=np.float32,
+        )
     return probe_local_to_world(local_corners, pose_probe_to_world)
 
 

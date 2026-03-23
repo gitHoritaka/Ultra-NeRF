@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-
 from ultranerf.visualization.transforms import ProbeGeometry, pose_to_axes, probe_local_to_world, probe_plane_corners
 
 
@@ -30,26 +29,55 @@ def build_probe_representation(
     origin, x_axis, y_axis, z_axis = pose_to_axes(pose_probe_to_world)
     axis_length = float(axis_length_mm if axis_length_mm is not None else max(geometry.width_mm, geometry.depth_mm) * 0.25)
     scan_plane = probe_plane_corners(pose_probe_to_world, geometry)
-    beam_line = probe_local_to_world(
-        np.array(
+    if geometry.is_convex:
+        half_angle = np.deg2rad(float(geometry.convex_angle_deg)) * 0.5
+        beam_local = np.array(
             [
-                [0.0, 0.0, 0.0],
-                [0.0, geometry.depth_mm, 0.0],
+                [0.0, geometry.convex_inner_radius_mm, 0.0],
+                [0.0, geometry.convex_outer_radius_mm, 0.0],
             ],
             dtype=np.float32,
-        ),
-        pose_probe_to_world,
-    )
-    probe_face_line = probe_local_to_world(
-        np.array(
-            [
-                [-geometry.width_mm / 2.0, 0.0, 0.0],
-                [geometry.width_mm / 2.0, 0.0, 0.0],
-            ],
-            dtype=np.float32,
-        ),
-        pose_probe_to_world,
-    )
+        )
+        beam_line = probe_local_to_world(beam_local, pose_probe_to_world)
+        probe_face_line = probe_local_to_world(
+            np.array(
+                [
+                    [
+                        np.sin(-half_angle) * geometry.convex_inner_radius_mm,
+                        np.cos(-half_angle) * geometry.convex_inner_radius_mm,
+                        0.0,
+                    ],
+                    [
+                        np.sin(half_angle) * geometry.convex_inner_radius_mm,
+                        np.cos(half_angle) * geometry.convex_inner_radius_mm,
+                        0.0,
+                    ],
+                ],
+                dtype=np.float32,
+            ),
+            pose_probe_to_world,
+        )
+    else:
+        beam_line = probe_local_to_world(
+            np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [0.0, geometry.depth_mm, 0.0],
+                ],
+                dtype=np.float32,
+            ),
+            pose_probe_to_world,
+        )
+        probe_face_line = probe_local_to_world(
+            np.array(
+                [
+                    [-geometry.width_mm / 2.0, 0.0, 0.0],
+                    [geometry.width_mm / 2.0, 0.0, 0.0],
+                ],
+                dtype=np.float32,
+            ),
+            pose_probe_to_world,
+        )
     axes_endpoints = {
         "x": origin + x_axis * axis_length,
         "y": origin + y_axis * axis_length,

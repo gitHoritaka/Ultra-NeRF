@@ -22,7 +22,9 @@ if str(SRC) not in sys.path:
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+from ultranerf.probe_geometry import build_probe_geometry_from_args
 from ultranerf.visualization.app import NerfLaunchConfig, launch_visualization_app, prepare_visualization_app, resolve_render_image_shape
 
 
@@ -32,6 +34,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-path", type=str, default=None, help="Optional path to a fused volume cache (.npz)")
     parser.add_argument("--probe-width-mm", type=float, required=True, help="Probe width in millimeters")
     parser.add_argument("--probe-depth-mm", type=float, required=True, help="Probe depth in millimeters")
+    parser.add_argument("--probe-type", type=str, default="linear", choices=("linear", "convex"))
+    parser.add_argument("--convex-center-x", type=float, default=0.0)
+    parser.add_argument("--convex-center-y", type=float, default=0.0)
+    parser.add_argument("--convex-angle-deg", type=float, default=70.0)
+    parser.add_argument("--convex-outer-radius-px", type=float, default=860.0)
+    parser.add_argument("--convex-inner-radius-px", type=float, default=217.0)
+    parser.add_argument("--convex-scale-x-mm", type=float, default=0.233)
+    parser.add_argument("--convex-scale-y-mm", type=float, default=0.233)
+    parser.add_argument("--convex-n-rays", type=int, default=250)
+    parser.add_argument("--convex-n-samples", type=int, default=600)
     parser.add_argument(
         "--fusion-device",
         type=str,
@@ -105,11 +117,28 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    geometry_args = SimpleNamespace(
+        probe_width=args.probe_width_mm,
+        probe_depth=args.probe_depth_mm,
+        probe_type=args.probe_type,
+        convex_center_x=args.convex_center_x,
+        convex_center_y=args.convex_center_y,
+        convex_angle_deg=args.convex_angle_deg,
+        convex_outer_radius_px=args.convex_outer_radius_px,
+        convex_inner_radius_px=args.convex_inner_radius_px,
+        convex_scale_x_mm=args.convex_scale_x_mm,
+        convex_scale_y_mm=args.convex_scale_y_mm,
+        convex_n_rays=args.convex_n_rays,
+        convex_n_samples=args.convex_n_samples,
+        convex_sampling_strategy="uniform_fan",
+    )
+    probe_geometry = build_probe_geometry_from_args(geometry_args)
 
     state = prepare_visualization_app(
         dataset_dir=args.dataset_dir,
         probe_width_mm=args.probe_width_mm,
         probe_depth_mm=args.probe_depth_mm,
+        probe_geometry=probe_geometry,
         spacing_mm=tuple(float(v) for v in args.spacing_mm),
         pixel_stride=tuple(int(v) for v in args.pixel_stride),
         cache_path=args.cache_path,
@@ -121,11 +150,14 @@ def main() -> int:
     nerf_enabled = args.checkpoint_path is not None
     render_shape = None
     if nerf_enabled:
-        render_shape = resolve_render_image_shape(
-            state.images,
-            render_height=args.render_height,
-            render_width=args.render_width,
-        )
+        if args.render_height is None and args.render_width is None and state.probe_geometry.is_convex:
+            render_shape = state.probe_geometry.convex_render_shape
+        else:
+            render_shape = resolve_render_image_shape(
+                state.images,
+                render_height=args.render_height,
+                render_width=args.render_width,
+            )
         checkpoint_path = Path(args.checkpoint_path)
         config_path = Path(args.config_path)
         if not checkpoint_path.exists():
@@ -152,6 +184,7 @@ def main() -> int:
         "fusion_device": state.fusion_device,
         "fusion_reduction": state.reduction_mode,
         "num_frames": int(state.images.shape[0]),
+        "probe_type": state.probe_geometry.probe_type,
         "nerf_enabled": nerf_enabled,
         "checkpoint_path": str(Path(args.checkpoint_path).resolve()) if args.checkpoint_path is not None else None,
         "config_path": str(Path(args.config_path).resolve()) if nerf_enabled else None,
