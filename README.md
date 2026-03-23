@@ -36,6 +36,7 @@ Start here:
 - visualizer overview: [`docs/VISUALIZER_OVERVIEW.md`](docs/VISUALIZER_OVERVIEW.md)
 - visualizer workflow: [`docs/VISUALIZER_WORKFLOW.md`](docs/VISUALIZER_WORKFLOW.md)
 - multi-sweep design and QA: [`docs/MULTI_SWEEP_VISUALIZATION.md`](docs/MULTI_SWEEP_VISUALIZATION.md)
+- tracked convex dataset conversion: [`convert_convex_dataset.py`](convert_convex_dataset.py)
 
 ## Visualizer
 

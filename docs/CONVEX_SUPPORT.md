@@ -46,6 +46,38 @@ Example config:
 - sweep fusion uses the convex fan geometry instead of the linear rectangular
   scan-plane assumption
 
+## Dataset Conversion
+
+For tracked convex datasets that are not already in UltraNeRF format, use:
+
+- [`convert_convex_dataset.py`](../convert_convex_dataset.py)
+
+Expected source layout:
+
+- `fan_info.xml`
+- one sweep directory per acquisition
+- image frames such as `*.png`
+- one `tracking.csv` per sweep
+
+The converter writes:
+
+- `images.npy`
+- `poses.npy`
+- one converted sweep folder per source sweep
+- a generated `multi_sweep_manifest.json`
+
+Example:
+
+```bash
+python convert_convex_dataset.py \
+  --source-root /workspace/data/abdominal_phantom \
+  --output-root /workspace/data/abdominal_phantom_ultranerf
+```
+
+The current converter assumes the raw tracking translation is attached to the
+raw image center and shifts it to the convex fan center expected by the current
+UltraNeRF convex pose convention.
+
 ## Scope Limits
 
 This is a selective port from `legacy/convex_probe/`.
