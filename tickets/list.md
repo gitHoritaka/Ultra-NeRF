@@ -121,6 +121,17 @@ The intended end state is:
 - T34
 - T35
 
+### Milestone 8: Convex Probe Support
+
+- T36
+- T37
+- T38
+- T39
+- T40
+- T41
+- T42
+- T43
+
 ## Multi-Sweep Follow-Up Tickets
 
 The tickets below extend the single-sweep viewer to support multiple tracked
@@ -175,3 +186,38 @@ Additional dependency notes:
 - T33 depends on T28, T30, and T32.
 - T34 depends on T29, T30, T32, and T33.
 - T35 depends on T32 through T34.
+
+## Convex Probe Support Tickets
+
+These tickets cover adding convex-probe support to the current codebase by
+porting the required geometry and rendering assumptions from
+`legacy/convex_probe/` into the current `src/ultranerf/` layout.
+
+Important implementation rule:
+
+- do not merge the legacy convex repository wholesale
+- instead, extract the convex-specific geometry, sampling, and visualization
+  logic and integrate it behind the current repo's abstractions
+
+Recommended order:
+
+36. [T36 - Define the Convex Probe Geometry Contract](T36-define-convex-probe-geometry-contract.md)
+37. [T37 - Add Convex Probe Configuration and CLI Support](T37-add-convex-probe-configuration-and-cli-support.md)
+38. [T38 - Add Convex Ray Generation for Training and Inference](T38-add-convex-ray-generation-for-training-and-inference.md)
+39. [T39 - Integrate Convex Rendering Layout Into the Active Renderer](T39-integrate-convex-rendering-layout-into-the-active-renderer.md)
+40. [T40 - Add Convex Pixel-to-World Mapping for Visualization and Fusion](T40-add-convex-pixel-to-world-mapping-for-visualization-and-fusion.md)
+41. [T41 - Add Convex Probe Representation to the Visualizer](T41-add-convex-probe-representation-to-the-visualizer.md)
+42. [T42 - Add Convex Dataset and Viewer Workflow Support](T42-add-convex-dataset-and-viewer-workflow-support.md)
+43. [T43 - Add Convex Regression Tests and Documentation](T43-add-convex-regression-tests-and-documentation.md)
+
+Additional dependency notes:
+
+- T36 is required before all other convex tickets.
+- T37 depends on T36.
+- T38 depends on T36 and T37.
+- T39 depends on T38.
+- T40 depends on T36 and should be implemented before convex sweep fusion or
+  convex visual interpretation is trusted.
+- T41 depends on T36 and T40.
+- T42 depends on T37 through T41.
+- T43 depends on T36 through T42.
