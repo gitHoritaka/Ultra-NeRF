@@ -34,7 +34,9 @@ Convex note:
 
 - if the dataset/checkpoint uses a convex probe, launch the viewer with
   matching convex geometry
-- the viewer supports the baseline convex path, not the legacy MIP path
+- the viewer supports both the baseline convex path and `render_mode=convex_mip`
+- MIP mode uses the same review panels, but the render metadata labels the
+  active mode explicitly
 
 ## 2. Understand The Panels
 

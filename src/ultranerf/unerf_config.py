@@ -53,7 +53,24 @@ def config_parser():
         type=str,
         default="default",
         choices=("default", "convex_mip"),
-        help="Rendering backend selection. convex_mip is reserved for the legacy MIP migration path.",
+        help="Rendering backend selection. convex_mip enables the convex-only integrated-encoding MIP backend.",
+    )
+    parser.add_argument(
+        "--mip_use_elongation",
+        action="store_true",
+        help="Enable the experimental sideways-elongated Gaussian footprint in convex_mip mode.",
+    )
+    parser.add_argument(
+        "--mip_max_elongation",
+        type=float,
+        default=5.0,
+        help="Maximum elongation factor when --mip_use_elongation is enabled.",
+    )
+    parser.add_argument(
+        "--mip_pixel_radius",
+        type=float,
+        default=0.00111,
+        help="Base conical footprint radius in meters for convex_mip rendering.",
     )
 
     parser.add_argument("--tensorboard", action="store_true")

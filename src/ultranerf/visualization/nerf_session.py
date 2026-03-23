@@ -150,6 +150,8 @@ class NerfSession:
             chunk=self.args.chunk,
             **kwargs,
         )
+        if isinstance(rendered, dict):
+            rendered.setdefault("_render_mode", getattr(self.args, "render_mode", "default"))
         if self.probe_geometry is not None and self.probe_geometry.is_convex and self.display_image_shape is not None:
             return self._remap_convex_render_payload(rendered)
         return rendered
@@ -157,6 +159,9 @@ class NerfSession:
     def _remap_convex_render_payload(self, rendered_output: dict[str, Any]) -> dict[str, Any]:
         remapped: dict[str, Any] = {}
         for key, value in rendered_output.items():
+            if str(key).startswith("_"):
+                remapped[key] = value
+                continue
             array = value
             try:
                 np_value = np.asarray(value.detach().cpu() if hasattr(value, "detach") else value, dtype=np.float32)

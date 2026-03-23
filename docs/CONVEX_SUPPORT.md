@@ -90,16 +90,17 @@ Included:
 
 Not included yet:
 
-- legacy convex MIP rendering
 - legacy full-volume convex branches
 - legacy cache/debug branches
 - legacy concentric/radial sampling alternatives
 
 ## MIP Status
 
-The config parser includes `render_mode`, but:
+The repo now includes a first-pass convex MIP backend:
 
-- `render_mode=default` is the supported path
-- `render_mode=convex_mip` currently raises `NotImplementedError`
+- `render_mode=default` keeps the baseline convex path
+- `render_mode=convex_mip` enables the integrated-encoding convex MIP backend
 
-That is intentional until the dedicated MIP migration tickets are implemented.
+Use the dedicated MIP note for scope and limitations:
+
+- [`docs/CONVEX_MIP_SUPPORT.md`](CONVEX_MIP_SUPPORT.md)

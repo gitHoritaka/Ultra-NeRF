@@ -116,13 +116,15 @@ def format_render_metadata(rendered_output: dict[str, Any] | None, map_key: str 
     """Create a short metadata summary for the current rendered output."""
     if not rendered_output:
         return "No render available"
+    render_mode = rendered_output.get("_render_mode")
     try:
         resolved_key = resolve_render_map_key(rendered_output, map_key)
         image = extract_render_image(rendered_output, resolved_key)
     except Exception:
-        return "Render available"
+        return f"Render available{f' | Mode: {render_mode}' if render_mode else ''}"
+    prefix = f"Mode: {render_mode} | " if render_mode else ""
     return (
-        f"Map: {resolved_key} | Image shape: {tuple(int(v) for v in image.shape)} | "
+        f"{prefix}Map: {resolved_key} | Image shape: {tuple(int(v) for v in image.shape)} | "
         f"min={float(np.min(image)):.3g} max={float(np.max(image)):.3g}"
     )
 

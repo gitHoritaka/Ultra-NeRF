@@ -33,6 +33,7 @@ Start here:
 
 - repository layout: [`docs/REPO_LAYOUT.md`](docs/REPO_LAYOUT.md)
 - convex support: [`docs/CONVEX_SUPPORT.md`](docs/CONVEX_SUPPORT.md)
+- convex MIP mode: [`docs/CONVEX_MIP_SUPPORT.md`](docs/CONVEX_MIP_SUPPORT.md)
 - visualizer overview: [`docs/VISUALIZER_OVERVIEW.md`](docs/VISUALIZER_OVERVIEW.md)
 - visualizer workflow: [`docs/VISUALIZER_WORKFLOW.md`](docs/VISUALIZER_WORKFLOW.md)
 - multi-sweep design and QA: [`docs/MULTI_SWEEP_VISUALIZATION.md`](docs/MULTI_SWEEP_VISUALIZATION.md)
@@ -71,8 +72,8 @@ The current workspace supports:
 Convex note:
 
 - baseline convex probe support is available through `probe_type=convex`
-- the optional legacy MIP path is not migrated yet; `render_mode=convex_mip`
-  currently fails explicitly
+- `render_mode=convex_mip` now enables the first-pass convex MIP backend
+- MIP scope and limits are documented in [`docs/CONVEX_MIP_SUPPORT.md`](docs/CONVEX_MIP_SUPPORT.md)
 
 For the UI layout, controls, and review workflow, use the dedicated visualizer
 docs instead of this README.

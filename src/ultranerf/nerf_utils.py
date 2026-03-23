@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from ultranerf.convex_mip import mip_input_channels, render_rays_us_convex_mip
 from ultranerf.model import NeRF, BARF, PoseRefine, Reconstruction
 from ultranerf.probe_geometry import ProbeGeometry, build_probe_geometry_from_args
 from ultranerf.rendering import render_rays_us, render_rays_us_with_reconstruction, render_rays_us_with_reconstruction_pts
@@ -219,6 +220,16 @@ def run_network(inputs, fn, embed_fn, netchunk=1024 * 64):
     return outputs
 
 
+def run_network_preencoded(inputs, fn, netchunk=1024 * 64):
+    """Apply a network to pre-encoded features without positional embedding."""
+    inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
+    outputs_flat = batchify(fn, netchunk)(inputs_flat)
+    outputs = torch.reshape(
+        outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]]
+    )
+    return outputs
+
+
 def run_barf_network(inputs, fn, netchunk=1024 * 64):
     """Prepares inputs and applies network 'fn'."""
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
@@ -233,8 +244,16 @@ def run_barf_network(inputs, fn, netchunk=1024 * 64):
 def batchify_rays(rays_flat, chunk=1024 * 32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
+    render_mode = kwargs.get("render_mode", "default")
     if kwargs["network_rec"] is not None:
         renderer = render_rays_us_with_reconstruction
+    elif render_mode == "convex_mip":
+        renderer = render_rays_us_convex_mip
+        kwargs = dict(kwargs)
+        kwargs["multires"] = int(kwargs.pop("mip_multires"))
+        kwargs["use_elongation"] = bool(kwargs.pop("mip_use_elongation"))
+        kwargs["max_elongation"] = float(kwargs.pop("mip_max_elongation"))
+        kwargs["pixel_radius"] = float(kwargs.pop("mip_pixel_radius"))
     else:
         renderer = render_rays_us
     try:
@@ -257,7 +276,7 @@ def batchify_rays(rays_flat, chunk=1024 * 32, **kwargs):
 def create_nets_for_reconstruction(args, device, mode="train"):
     """Instantiate NeRF's MLP model."""
     if getattr(args, "render_mode", "default") == "convex_mip":
-        raise NotImplementedError("render_mode=convex_mip is not implemented in the current repo yet")
+        raise NotImplementedError("Reconstruction mode is not supported for render_mode=convex_mip")
     probe_geometry = build_probe_geometry_from_args(args)
     if probe_geometry.is_convex:
         args.N_samples = int(probe_geometry.convex_n_samples)
@@ -377,12 +396,15 @@ def create_nets_for_reconstruction(args, device, mode="train"):
 
 def create_nerf(args, device, mode="train"):
     """Instantiate NeRF's MLP model."""
-    if getattr(args, "render_mode", "default") == "convex_mip":
-        raise NotImplementedError("render_mode=convex_mip is not implemented in the current repo yet")
     probe_geometry = build_probe_geometry_from_args(args)
+    render_mode = getattr(args, "render_mode", "default")
+    if render_mode == "convex_mip" and not probe_geometry.is_convex:
+        raise ValueError("render_mode=convex_mip requires probe_type=convex")
     if probe_geometry.is_convex:
         args.N_samples = int(probe_geometry.convex_n_samples)
     embed_fn, input_ch = get_embedder(args.multires, device, args.i_embed)
+    if render_mode == "convex_mip":
+        input_ch = mip_input_channels(args.multires)
     if args.rec_only_theta or args.rec_only_occ:
         embed_fn_rec, input_ch_rec = get_embedder(args.multires, device, args.i_embed, input_dim=3)
     else:
@@ -399,9 +421,14 @@ def create_nerf(args, device, mode="train"):
 
     grad_vars = list(model.parameters())
 
-    network_query_fn = lambda inputs, network_fn: run_network(
-        inputs, network_fn, embed_fn=embed_fn, netchunk=args.netchunk
-    )
+    if render_mode == "convex_mip":
+        network_query_fn = lambda inputs, network_fn: run_network_preencoded(
+            inputs, network_fn, netchunk=args.netchunk
+        )
+    else:
+        network_query_fn = lambda inputs, network_fn: run_network(
+            inputs, network_fn, embed_fn=embed_fn, netchunk=args.netchunk
+        )
 
     network_query_fn_rec = lambda inputs, network_fn: run_network(
         inputs, network_fn, embed_fn=embed_fn_rec, netchunk=args.netchunk
@@ -479,6 +506,11 @@ def create_nerf(args, device, mode="train"):
         "network_fn": model,
         "network_rec": model_rec,
         "probe_geometry": probe_geometry,
+        "render_mode": render_mode,
+        "mip_multires": int(args.multires),
+        "mip_use_elongation": bool(getattr(args, "mip_use_elongation", False)),
+        "mip_max_elongation": float(getattr(args, "mip_max_elongation", 5.0)),
+        "mip_pixel_radius": float(getattr(args, "mip_pixel_radius", 0.00111)),
     }
 
     render_kwargs_test = {k: render_kwargs_train[k] for k in render_kwargs_train}

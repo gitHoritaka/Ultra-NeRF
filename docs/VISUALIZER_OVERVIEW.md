@@ -197,6 +197,9 @@ meter-scale format expected by the training code at the inference boundary.
 For convex checkpoints, the viewer renders in the native fan grid internally
 and remaps the result back into the recorded image layout for review.
 
+If the checkpoint was trained with `render_mode=convex_mip`, the render panel
+metadata labels that mode explicitly. The review workflow stays the same.
+
 ### Intermediate Acoustic Maps
 
 The render panel now includes a dropdown for switching the displayed output
