@@ -1,15 +1,15 @@
-expname = abdominal_phantom_convex_mip_v1
+expname = abdominal_phantom_convex_mip_v2
 basedir = ./logs/
 datadir = ./data/abdominal_phantom_ultranerf/combined_train
 
 dataset_type = us
 probe_type = convex
 probe_depth = 160.0
-probe_width = 125.65022873448356
+probe_width = 239.6695060189378
 
 convex_center_x = 314.54253118117
 convex_center_y = 23.297991481776
-convex_angle_deg = 35.0
+convex_angle_deg = 70.0
 convex_outer_radius_px = 548.047376043019
 convex_inner_radius_px = 128.34
 convex_scale_x_mm = 0.381217984559796
