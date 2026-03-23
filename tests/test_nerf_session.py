@@ -12,6 +12,27 @@ class FakeParser:
         return SimpleNamespace(chunk=123, config_args=list(args or []))
 
 
+class FakeConvexParser:
+    def parse_args(self, args=None):
+        return SimpleNamespace(
+            chunk=123,
+            config_args=list(args or []),
+            probe_width=125.0,
+            probe_depth=160.0,
+            probe_type="convex",
+            convex_center_x=50.0,
+            convex_center_y=10.0,
+            convex_angle_deg=35.0,
+            convex_outer_radius_px=100.0,
+            convex_inner_radius_px=20.0,
+            convex_scale_x_mm=0.4,
+            convex_scale_y_mm=0.4,
+            convex_n_rays=6,
+            convex_n_samples=7,
+            convex_sampling_strategy="uniform_fan",
+        )
+
+
 def make_runtime(call_log):
     def config_parser():
         return FakeParser()
@@ -104,28 +125,28 @@ def test_nerf_session_render_pose_calls_runtime_with_converted_pose():
 
 def test_nerf_session_remaps_convex_outputs_for_display():
     call_log = {}
-    runtime = make_runtime(call_log)
     convex_geometry = ProbeGeometry(
-        width_mm=80.0,
-        depth_mm=140.0,
+        width_mm=125.0,
+        depth_mm=160.0,
         probe_type="convex",
-        convex_center_x=5.0,
-        convex_center_y=0.0,
-        convex_angle_deg=60.0,
-        convex_outer_radius_px=6.0,
-        convex_inner_radius_px=1.0,
-        convex_scale_x_mm=1.0,
-        convex_scale_y_mm=1.0,
-        convex_n_rays=5,
-        convex_n_samples=4,
+        convex_center_x=50.0,
+        convex_center_y=10.0,
+        convex_angle_deg=35.0,
+        convex_outer_radius_px=100.0,
+        convex_inner_radius_px=20.0,
+        convex_scale_x_mm=0.4,
+        convex_scale_y_mm=0.4,
+        convex_n_rays=12,
+        convex_n_samples=14,
     )
 
     def render_us(H, W, sw, sh, c2w=None, chunk=None, **kwargs):
+        call_log["render_shape"] = (H, W)
         return {"intensity_map": torch.ones((1, 1, H, W), dtype=torch.float32)}
 
     runtime = NerfRuntime(
         torch=torch,
-        config_parser=lambda: FakeParser(),
+        config_parser=lambda: FakeConvexParser(),
         create_nerf=make_runtime(call_log).create_nerf,
         render_us=render_us,
     )
@@ -133,15 +154,16 @@ def test_nerf_session_remaps_convex_outputs_for_display():
     session = NerfSession.from_checkpoint(
         config_path="configs/config_base_nerf.txt",
         checkpoint_path="logs/example/001000.tar",
-        image_shape=(4, 5),
+        image_shape=(14, 12),
         display_image_shape=(12, 12),
         probe_geometry=convex_geometry,
-        probe_width_mm=80.0,
-        probe_depth_mm=140.0,
+        probe_width_mm=convex_geometry.width_mm,
+        probe_depth_mm=convex_geometry.depth_mm,
         device="cpu",
         runtime=runtime,
     )
 
     rendered = session.render_pose(np.eye(4, dtype=np.float32))
 
+    assert call_log["render_shape"] == (7, 6)
     assert tuple(rendered["intensity_map"].shape) == (1, 1, 12, 12)

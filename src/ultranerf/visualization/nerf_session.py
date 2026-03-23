@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from ultranerf.probe_geometry import ProbeGeometry, remap_convex_grid_to_image
+from ultranerf.probe_geometry import ProbeGeometry, build_probe_geometry_from_args, remap_convex_grid_to_image
 from ultranerf.visualization.transforms import ensure_pose_matrix
 
 
@@ -72,6 +72,14 @@ class NerfSession:
     near_m: float
     far_m: float
 
+    @staticmethod
+    def _resolve_runtime_probe_geometry(args: Any, fallback_geometry: ProbeGeometry | None) -> ProbeGeometry | None:
+        """Resolve the probe geometry encoded in the runtime config, if available."""
+        try:
+            return build_probe_geometry_from_args(args)
+        except Exception:
+            return fallback_geometry
+
     @classmethod
     def from_checkpoint(
         cls,
@@ -93,8 +101,10 @@ class NerfSession:
 
         _, render_kwargs_test, _, _, _ = runtime.create_nerf(args, device=runtime_device, mode="test")
 
+        effective_geometry = cls._resolve_runtime_probe_geometry(args, probe_geometry)
         height, width = image_shape
-        effective_geometry = probe_geometry
+        if effective_geometry is not None and effective_geometry.is_convex:
+            height, width = effective_geometry.convex_render_shape
         probe_width_m = float(probe_width_mm) * 0.001
         probe_depth_m = float(probe_depth_mm) * 0.001
         if effective_geometry is not None and effective_geometry.is_convex:
@@ -115,7 +125,7 @@ class NerfSession:
             device=runtime_device,
             image_shape=(height, width),
             display_image_shape=display_image_shape,
-            probe_geometry=probe_geometry,
+            probe_geometry=effective_geometry,
             probe_width_mm=float(probe_width_mm),
             probe_depth_mm=float(probe_depth_mm),
             render_kwargs=render_kwargs,
