@@ -171,7 +171,7 @@ def _fuse_sweeps_to_volume_numpy(
 
         flat_values = image[rows.astype(np.int32), cols.astype(np.int32)]
         finite_mask = np.isfinite(flat_values)
-        if probe_geometry.is_convex:
+        if _is_convex_geometry(probe_geometry):
             finite_mask &= convex_valid_pixel_mask(rows, cols, probe_geometry)
 
         valid_mask = np.logical_and.reduce(
@@ -260,7 +260,7 @@ def _fuse_sweeps_to_volume_torch(
         voxel_indices = torch.round(voxel_points).to(torch.int64)
         flat_values = image[rows, cols]
         finite_mask = torch.isfinite(flat_values)
-        if probe_geometry.is_convex:
+        if _is_convex_geometry(probe_geometry):
             convex_mask = torch.from_numpy(convex_valid_pixel_mask(rows_np, cols_np, probe_geometry)).to(torch_device)
             finite_mask = finite_mask & convex_mask
         valid_mask = (
@@ -343,3 +343,6 @@ def fuse_sweeps_to_volume(
         device=resolved_device,
         reduction_mode=reduction_mode,
     )
+def _is_convex_geometry(geometry: ProbeGeometry) -> bool:
+    return bool(getattr(geometry, "is_convex", False))
+

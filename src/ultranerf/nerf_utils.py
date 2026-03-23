@@ -256,6 +256,8 @@ def batchify_rays(rays_flat, chunk=1024 * 32, **kwargs):
 
 def create_nets_for_reconstruction(args, device, mode="train"):
     """Instantiate NeRF's MLP model."""
+    if getattr(args, "render_mode", "default") == "convex_mip":
+        raise NotImplementedError("render_mode=convex_mip is not implemented in the current repo yet")
     probe_geometry = build_probe_geometry_from_args(args)
     if probe_geometry.is_convex:
         args.N_samples = int(probe_geometry.convex_n_samples)
@@ -375,6 +377,8 @@ def create_nets_for_reconstruction(args, device, mode="train"):
 
 def create_nerf(args, device, mode="train"):
     """Instantiate NeRF's MLP model."""
+    if getattr(args, "render_mode", "default") == "convex_mip":
+        raise NotImplementedError("render_mode=convex_mip is not implemented in the current repo yet")
     probe_geometry = build_probe_geometry_from_args(args)
     if probe_geometry.is_convex:
         args.N_samples = int(probe_geometry.convex_n_samples)

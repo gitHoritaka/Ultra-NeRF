@@ -14,6 +14,11 @@ The visualizer is a napari-based review workspace for:
 - nearest recorded-frame comparison
 - checkpoint-backed NeRF rendering from arbitrary probe poses
 
+It supports both:
+
+- linear probe geometry
+- first-pass convex probe geometry
+
 It is designed as a research tool, not a polished clinical workstation.
 
 ## Entry Points
@@ -188,6 +193,9 @@ That render uses:
 
 The viewer itself works in millimeters. The model runtime converts to the
 meter-scale format expected by the training code at the inference boundary.
+
+For convex checkpoints, the viewer renders in the native fan grid internally
+and remaps the result back into the recorded image layout for review.
 
 ### Intermediate Acoustic Maps
 

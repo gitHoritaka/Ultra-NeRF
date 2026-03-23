@@ -4,7 +4,7 @@
 
 PyTorch research code for learning an ultrasound image formation model from tracked 2D ultrasound frames.
 
-This repository starts from UltraNeRF and NeRF-style MLPs, but the core renderer is customized for linear ultrasound probes rather than RGB image synthesis.
+This repository starts from UltraNeRF and NeRF-style MLPs, but the core renderer is customized for ultrasound probes rather than RGB image synthesis. The current repo supports the baseline linear path and a first-pass convex path.
 
 Original upstream references:
 - UltraNeRF: https://github.com/magdalena-wysocki/ultra-nerf
@@ -15,7 +15,7 @@ Original upstream references:
 At a high level, the code learns a 3D field from ultrasound data:
 
 1. Load tracked 2D ultrasound images and probe poses.
-2. Cast linear ultrasound rays from the probe geometry.
+2. Cast ultrasound rays from the selected probe geometry.
 3. Sample 3D points along each ray.
 4. Use an MLP to predict per-point ultrasound parameters.
 5. Integrate those parameters with a custom ultrasound renderer.
@@ -32,6 +32,7 @@ now lives under `src/ultranerf/`.
 Start here:
 
 - repository layout: [`docs/REPO_LAYOUT.md`](docs/REPO_LAYOUT.md)
+- convex support: [`docs/CONVEX_SUPPORT.md`](docs/CONVEX_SUPPORT.md)
 - visualizer overview: [`docs/VISUALIZER_OVERVIEW.md`](docs/VISUALIZER_OVERVIEW.md)
 - visualizer workflow: [`docs/VISUALIZER_WORKFLOW.md`](docs/VISUALIZER_WORKFLOW.md)
 - multi-sweep design and QA: [`docs/MULTI_SWEEP_VISUALIZATION.md`](docs/MULTI_SWEEP_VISUALIZATION.md)
@@ -65,6 +66,12 @@ The current workspace supports:
 - nearest recorded-frame comparison
 - NeRF rendering from the current probe pose
 - dropdown switching between the final render and intermediate acoustic maps
+
+Convex note:
+
+- baseline convex probe support is available through `probe_type=convex`
+- the optional legacy MIP path is not migrated yet; `render_mode=convex_mip`
+  currently fails explicitly
 
 For the UI layout, controls, and review workflow, use the dedicated visualizer
 docs instead of this README.
@@ -109,6 +116,9 @@ docs instead of this README.
 
 - `src/ultranerf/rendering.py`
   Ultrasound-specific forward model. This is the most important file for understanding how predicted 3D quantities become a 2D ultrasound image.
+
+- `src/ultranerf/probe_geometry.py`
+  Shared linear/convex probe geometry definitions, convex fan sampling, and remapping helpers.
 
 - `src/ultranerf/camera.py`
   Pose and Lie algebra utilities used by BARF pose refinement.
@@ -157,15 +167,16 @@ The bundled sample dataset under `data/synthetic_testing/l2` includes baseline i
 
 ### 2. Ultrasound ray generation
 
-The repo uses a linear probe model, not a pinhole camera model.
+The repo uses ultrasound probe geometry, not a pinhole camera model.
 
-`get_rays_us_linear()` in `src/ultranerf/nerf_utils.py` creates:
+Current probe modes:
 
-- one ray origin per lateral probe position
-- one shared forward ray direction
-- a near/far interval based on probe depth
+- `linear`
+- `convex`
 
-This matches the acquisition geometry of a linear ultrasound transducer.
+Linear mode uses one ray origin per lateral probe position with a shared
+forward direction. Convex mode uses a fan of radial rays starting from the
+inner arc of the convex probe.
 
 ### 3. MLP prediction
 

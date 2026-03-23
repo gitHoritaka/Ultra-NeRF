@@ -15,6 +15,10 @@ import numpy as np
 from ultranerf.probe_geometry import ProbeGeometry
 
 
+def _is_convex_geometry(geometry: ProbeGeometry) -> bool:
+    return bool(getattr(geometry, "is_convex", False))
+
+
 @dataclass(frozen=True)
 class VolumeGeometry:
     """Voxel volume geometry in millimeters."""
@@ -80,7 +84,7 @@ def pixel_to_probe_local(
 
     Pixel centers are used for the conversion.
     """
-    if geometry.is_convex:
+    if _is_convex_geometry(geometry):
         row_arr = np.asarray(row, dtype=np.float32)
         col_arr = np.asarray(col, dtype=np.float32)
         lateral = (col_arr - float(geometry.convex_center_x)) * float(geometry.convex_scale_x_mm)
@@ -143,7 +147,7 @@ def probe_plane_corners(
     - bottom-right
     - bottom-left
     """
-    if geometry.is_convex:
+    if _is_convex_geometry(geometry):
         half_angle = np.deg2rad(float(geometry.convex_angle_deg)) * 0.5
         inner = geometry.convex_inner_radius_mm
         outer = geometry.convex_outer_radius_mm

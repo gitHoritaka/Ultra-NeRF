@@ -30,6 +30,12 @@ python run_visualize_multi_sweeps.py \
   --no-gui
 ```
 
+Convex note:
+
+- if the dataset/checkpoint uses a convex probe, launch the viewer with
+  matching convex geometry
+- the viewer supports the baseline convex path, not the legacy MIP path
+
 ## 2. Understand The Panels
 
 ### Probe Controls

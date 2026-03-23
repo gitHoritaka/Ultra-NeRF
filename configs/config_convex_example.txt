@@ -1,0 +1,21 @@
+expname = convex_example
+basedir = ./logs/
+datadir = ./data/convex_example
+
+probe_type = convex
+probe_depth = 140.0
+probe_width = 80.0
+
+convex_center_x = 495
+convex_center_y = -178
+convex_angle_deg = 70
+convex_outer_radius_px = 860
+convex_inner_radius_px = 217
+convex_scale_x_mm = 0.233
+convex_scale_y_mm = 0.233
+convex_n_rays = 250
+convex_n_samples = 600
+
+N_samples = 600
+n_iters = 2000
+loss = l2
