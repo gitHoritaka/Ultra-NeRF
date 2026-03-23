@@ -60,6 +60,7 @@ def test_fan_center_offset_uses_image_center_in_pixel_coordinates(tmp_path: Path
     xml_path = tmp_path / "fan_info.xml"
     write_fan_xml(xml_path)
     metadata = parse_fan_info_xml(xml_path)
+    assert metadata.opening_angle_deg == 60.0
     offset = fan_center_offset_mm_from_image_center(metadata)
     np.testing.assert_allclose(offset, np.array([0.0, -0.25, 0.0], dtype=np.float32))
 
@@ -87,5 +88,6 @@ def test_convert_convex_multi_sweep_dataset_writes_images_poses_and_manifest(tmp
     assert images.shape == (2, 7, 11)
     assert poses.shape == (2, 4, 4)
     assert manifest["probe_geometry"]["probe_type"] == "convex"
+    assert manifest["probe_geometry"]["convex_angle_deg"] == 60.0
     assert manifest["sweeps"][0]["dataset_dir"] == "sweep_1"
     assert summary["num_sweeps"] == 2

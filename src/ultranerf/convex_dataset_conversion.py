@@ -66,12 +66,14 @@ def parse_fan_info_xml(xml_path: str | Path) -> ConvexFanMetadata:
     params = _read_param_map(path)
     offset_x, offset_y = (float(v) for v in params["offset"].split())
     spacing_x, spacing_y, _spacing_z = (float(v) for v in params["spacing"].split())
+    # The source XML stores openingAngle as the half-angle of the fan.
+    opening_half_angle_deg = float(params["openingAngle"])
     return ConvexFanMetadata(
         center_x_px=offset_x,
         center_y_px=offset_y,
         inner_radius_px=float(params["shortRadius"]),
         outer_radius_px=float(params["longRadius"]),
-        opening_angle_deg=float(params["openingAngle"]),
+        opening_angle_deg=opening_half_angle_deg * 2.0,
         image_width_px=int(params["width"]),
         image_height_px=int(params["height"]),
         spacing_x_mm=spacing_x,
