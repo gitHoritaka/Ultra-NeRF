@@ -8,7 +8,7 @@ probe_depth = 160.0
 probe_width = 125.65022873448356
 
 convex_center_x = 314.54253118117
-convex_center_y = 23.297991481776
+convex_center_y = -105.04200851822401
 convex_angle_deg = 35.0
 convex_outer_radius_px = 548.047376043019
 convex_inner_radius_px = 128.34

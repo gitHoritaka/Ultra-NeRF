@@ -35,6 +35,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("image_center", "fan_center"),
         help="Point represented by the raw tracking pose translation",
     )
+    parser.add_argument(
+        "--image-layout",
+        type=str,
+        default="fan_center",
+        choices=("fan_center", "scan_converted_apex"),
+        help="How the stored raw images are laid out for convex remapping",
+    )
     parser.add_argument("--sweep-glob", type=str, default="sweep_*", help="Glob used to discover source sweep folders")
     parser.add_argument("--image-glob", type=str, default="*.png", help="Glob used to discover frame images in each sweep")
     parser.add_argument("--convex-n-rays", type=int, default=None, help="Override convex render ray count for the manifest")
@@ -58,6 +65,7 @@ def main() -> int:
         image_glob=args.image_glob,
         convex_n_rays=args.convex_n_rays,
         convex_n_samples=args.convex_n_samples,
+        image_layout=args.image_layout,
         overwrite=args.overwrite,
     )
     print(json.dumps(summary, indent=2))

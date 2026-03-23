@@ -10,6 +10,7 @@ from ultranerf.convex_dataset_conversion import (
     apply_local_translation,
     build_multi_sweep_manifest,
     convert_convex_multi_sweep_dataset,
+    display_convex_center_px,
     fan_center_offset_mm_from_image_center,
     parse_fan_info_xml,
     parse_tracking_pose_row,
@@ -65,6 +66,18 @@ def test_fan_center_offset_uses_image_center_in_pixel_coordinates(tmp_path: Path
     np.testing.assert_allclose(offset, np.array([0.0, -0.25, 0.0], dtype=np.float32))
 
 
+def test_display_convex_center_supports_scan_converted_apex_layout(tmp_path: Path) -> None:
+    xml_path = tmp_path / "fan_info.xml"
+    write_fan_xml(xml_path)
+    metadata = parse_fan_info_xml(xml_path)
+
+    fan_center = display_convex_center_px(metadata, image_layout="fan_center")
+    scan_converted = display_convex_center_px(metadata, image_layout="scan_converted_apex")
+
+    assert fan_center == (5.0, 2.0)
+    assert scan_converted == (5.0, 0.0)
+
+
 def test_apply_local_translation_shifts_pose_translation() -> None:
     pose = np.eye(4, dtype=np.float32)
     shifted = apply_local_translation(pose, np.array([1.0, 2.0, 3.0], dtype=np.float32))
@@ -79,7 +92,11 @@ def test_convert_convex_multi_sweep_dataset_writes_images_poses_and_manifest(tmp
     write_sweep(source, "sweep_2")
 
     output = tmp_path / "converted"
-    summary = convert_convex_multi_sweep_dataset(source_root=source, output_root=output)
+    summary = convert_convex_multi_sweep_dataset(
+        source_root=source,
+        output_root=output,
+        image_layout="scan_converted_apex",
+    )
 
     images = np.load(output / "sweep_1" / "images.npy")
     poses = np.load(output / "sweep_1" / "poses.npy")
@@ -89,5 +106,7 @@ def test_convert_convex_multi_sweep_dataset_writes_images_poses_and_manifest(tmp
     assert poses.shape == (2, 4, 4)
     assert manifest["probe_geometry"]["probe_type"] == "convex"
     assert manifest["probe_geometry"]["convex_angle_deg"] == 60.0
+    assert manifest["probe_geometry"]["convex_center_y"] == 0.0
+    assert manifest["metadata"]["image_layout"] == "scan_converted_apex"
     assert manifest["sweeps"][0]["dataset_dir"] == "sweep_1"
     assert summary["num_sweeps"] == 2

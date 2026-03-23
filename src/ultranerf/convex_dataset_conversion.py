@@ -47,6 +47,11 @@ class ConvexFanMetadata:
     def image_center_px(self) -> tuple[float, float]:
         return ((float(self.image_width_px) - 1.0) * 0.5, (float(self.image_height_px) - 1.0) * 0.5)
 
+    @property
+    def apex_row_px(self) -> float:
+        """Row coordinate of the scan-converted fan apex in the raw image layout."""
+        return float(self.center_y_px)
+
 
 def _read_param_map(xml_path: Path) -> dict[str, str]:
     tree = ET.parse(xml_path)
@@ -112,6 +117,28 @@ def fan_center_offset_mm_from_image_center(metadata: ConvexFanMetadata) -> np.nd
         ],
         dtype=np.float32,
     )
+
+
+def display_convex_center_px(
+    metadata: ConvexFanMetadata,
+    *,
+    image_layout: str,
+) -> tuple[float, float]:
+    """Return the display-space convex center used for image remapping.
+
+    `fan_center` means the raw image coordinates are expressed around the physical
+    fan center from the calibration XML.
+
+    `scan_converted_apex` means the stored image is already scan-converted, so the
+    top apex of the visible fan lies near `center_y_px`; the renderer should then
+    use an effective fan center shifted upward by the inner radius.
+    """
+    layout = str(image_layout).lower()
+    if layout == "fan_center":
+        return float(metadata.center_x_px), float(metadata.center_y_px)
+    if layout == "scan_converted_apex":
+        return float(metadata.center_x_px), float(metadata.apex_row_px - metadata.inner_radius_px)
+    raise ValueError(f"unsupported image_layout: {image_layout}")
 
 
 def apply_local_translation(pose_tracking_origin_mm: np.ndarray, offset_mm: np.ndarray) -> np.ndarray:
@@ -199,17 +226,19 @@ def build_multi_sweep_manifest(
     metadata: ConvexFanMetadata,
     convex_n_rays: int,
     convex_n_samples: int,
+    image_layout: str = "fan_center",
     manifest_name: str = "multi_sweep_manifest.json",
 ) -> Path:
     """Write a multi-sweep visualization manifest for converted convex data."""
     root = Path(output_root)
+    display_center_x, display_center_y = display_convex_center_px(metadata, image_layout=image_layout)
     manifest = {
         "probe_geometry": {
             "probe_type": "convex",
             "width_mm": metadata.width_mm,
             "depth_mm": metadata.depth_mm,
-            "convex_center_x": metadata.center_x_px,
-            "convex_center_y": metadata.center_y_px,
+            "convex_center_x": display_center_x,
+            "convex_center_y": display_center_y,
             "convex_angle_deg": metadata.opening_angle_deg,
             "convex_outer_radius_px": metadata.outer_radius_px,
             "convex_inner_radius_px": metadata.inner_radius_px,
@@ -222,6 +251,7 @@ def build_multi_sweep_manifest(
         "comparison_policy": "all_enabled",
         "metadata": {
             "source_dataset": "converted_convex_tracking_dataset",
+            "image_layout": image_layout,
             "fan_info": asdict(metadata),
         },
         "sweeps": [
@@ -250,6 +280,7 @@ def convert_convex_multi_sweep_dataset(
     image_glob: str = "*.png",
     convex_n_rays: int | None = None,
     convex_n_samples: int | None = None,
+    image_layout: str = "fan_center",
     overwrite: bool = False,
 ) -> dict[str, object]:
     """Convert a raw convex multi-sweep dataset into UltraNeRF format."""
@@ -280,6 +311,7 @@ def convert_convex_multi_sweep_dataset(
         metadata=metadata,
         convex_n_rays=int(convex_n_rays if convex_n_rays is not None else metadata.image_width_px),
         convex_n_samples=int(convex_n_samples if convex_n_samples is not None else metadata.image_height_px),
+        image_layout=image_layout,
     )
 
     conversion_summary = {
@@ -287,6 +319,7 @@ def convert_convex_multi_sweep_dataset(
         "output_root": str(output.resolve()),
         "fan_info_xml": str(Path(fan_info_xml or (source / "fan_info.xml")).resolve()),
         "tracking_origin": tracking_origin,
+        "image_layout": image_layout,
         "manifest_path": str(manifest_path.resolve()),
         "num_sweeps": len(summaries),
         "sweeps": summaries,
