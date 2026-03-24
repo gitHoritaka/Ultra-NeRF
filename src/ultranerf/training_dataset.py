@@ -13,6 +13,19 @@ from ultranerf.probe_geometry import ProbeGeometry
 from ultranerf.training_config import DatasetSplit, write_dataset_split
 
 
+def sanitize_training_images(images: np.ndarray, *, min_value: float = 0.0, max_value: float = 255.0) -> np.ndarray:
+    """Sanitize GUI-selected training images before writing the combined dataset.
+
+    The sweep exports may contain NaN/inf values and extreme outliers. The GUI
+    training path should clamp those into a stable image range rather than let
+    them poison optimization immediately.
+    """
+    array = np.asarray(images, dtype=np.float32)
+    sanitized = np.where(np.isfinite(array), array, float(min_value))
+    sanitized = np.clip(sanitized, float(min_value), float(max_value))
+    return sanitized.astype(np.float32, copy=False)
+
+
 @dataclass(frozen=True)
 class DiscoveredTrainingSweep:
     """One sweep directory that looks compatible with UltraNeRF training."""
@@ -104,10 +117,15 @@ def build_training_dataset_from_sweeps(
     validation_indices: list[int] = []
     offset = 0
     sweep_offsets: dict[str, dict[str, Any]] = {}
+    sanitized_nonfinite_count = 0
+    clipped_value_count = 0
 
     for sweep_id in selected_ids:
         sweep = sweep_lookup[sweep_id]
-        images = np.load(sweep.dataset_dir / "images.npy").astype(np.float32)
+        raw_images = np.load(sweep.dataset_dir / "images.npy").astype(np.float32)
+        sanitized_nonfinite_count += int(np.size(raw_images) - np.count_nonzero(np.isfinite(raw_images)))
+        clipped_value_count += int(np.count_nonzero(np.isfinite(raw_images) & ((raw_images < 0.0) | (raw_images > 255.0))))
+        images = sanitize_training_images(raw_images)
         poses = np.load(sweep.dataset_dir / "poses.npy").astype(np.float32)
         frame_count = int(images.shape[0])
         image_chunks.append(images)
@@ -142,6 +160,12 @@ def build_training_dataset_from_sweeps(
         "selected_training_sweeps": list(training_ids),
         "selected_validation_sweeps": list(validation_ids),
         "sweep_offsets": sweep_offsets,
+        "sanitization": {
+            "clip_min": 0.0,
+            "clip_max": 255.0,
+            "nonfinite_values_replaced": sanitized_nonfinite_count,
+            "finite_values_clipped": clipped_value_count,
+        },
     }
     manifest_path = output_root / "training_dataset_manifest.json"
     manifest_path.write_text(json.dumps(manifest_payload, indent=2))

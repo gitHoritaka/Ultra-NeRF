@@ -8,6 +8,7 @@ from ultranerf.training_dataset import (
     build_preview_manifest,
     build_training_dataset_from_sweeps,
     discover_training_sweeps,
+    sanitize_training_images,
 )
 
 
@@ -61,3 +62,41 @@ def test_build_preview_manifest_writes_selected_sweeps_and_geometry(tmp_path: Pa
     payload = json.loads(manifest_path.read_text())
     assert payload["probe_geometry"]["width_mm"] == 20.0
     assert [entry["sweep_id"] for entry in payload["sweeps"]] == ["a"]
+
+
+def test_sanitize_training_images_replaces_nonfinite_and_clips() -> None:
+    images = np.asarray(
+        [[[np.nan, np.inf, -np.inf, -5.0, 42.0, 400.0]]],
+        dtype=np.float32,
+    )
+    sanitized = sanitize_training_images(images)
+    assert np.isfinite(sanitized).all()
+    assert sanitized.min() == 0.0
+    assert sanitized.max() == 255.0
+    assert sanitized[0, 0, 4] == 42.0
+
+
+def test_build_training_dataset_from_sweeps_sanitizes_invalid_values(tmp_path: Path) -> None:
+    write_sweep(tmp_path / "train", 1.0)
+    write_sweep(tmp_path / "val", 2.0)
+    train_images = np.load(tmp_path / "train" / "images.npy")
+    train_images[0, 0, 0] = np.nan
+    train_images[0, 0, 1] = np.inf
+    train_images[0, 0, 2] = -10.0
+    train_images[0, 0, 3] = 999.0
+    np.save(tmp_path / "train" / "images.npy", train_images)
+
+    sweeps = discover_training_sweeps(tmp_path)
+    artifacts = build_training_dataset_from_sweeps(
+        sweeps,
+        training_ids=("train",),
+        validation_ids=("val",),
+        output_dir=tmp_path / "out",
+    )
+    images = np.load(artifacts["images_path"])
+    manifest = json.loads(Path(artifacts["manifest_path"]).read_text())
+    assert np.isfinite(images).all()
+    assert float(images.min()) >= 0.0
+    assert float(images.max()) <= 255.0
+    assert manifest["sanitization"]["nonfinite_values_replaced"] == 2
+    assert manifest["sanitization"]["finite_values_clipped"] == 2
