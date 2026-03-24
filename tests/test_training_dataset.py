@@ -8,6 +8,7 @@ from ultranerf.training_dataset import (
     build_preview_manifest,
     build_training_dataset_from_sweeps,
     discover_training_sweeps,
+    estimate_training_clip_max,
     sanitize_training_images,
 )
 
@@ -64,15 +65,24 @@ def test_build_preview_manifest_writes_selected_sweeps_and_geometry(tmp_path: Pa
     assert [entry["sweep_id"] for entry in payload["sweeps"]] == ["a"]
 
 
+def test_estimate_training_clip_max_uses_dataset_percentile() -> None:
+    images = (
+        np.asarray([[[0.0, 10.0, 20.0, 30.0, 1000.0]]], dtype=np.float32),
+        np.asarray([[[5.0, 15.0, 25.0, 35.0, 45.0]]], dtype=np.float32),
+    )
+    clip_max = estimate_training_clip_max(images, percentile=90.0, max_samples_per_sweep=100)
+    assert 30.0 <= clip_max <= 1000.0
+
+
 def test_sanitize_training_images_replaces_nonfinite_and_clips() -> None:
     images = np.asarray(
         [[[np.nan, np.inf, -np.inf, -5.0, 42.0, 400.0]]],
         dtype=np.float32,
     )
-    sanitized = sanitize_training_images(images)
+    sanitized = sanitize_training_images(images, max_value=123.0)
     assert np.isfinite(sanitized).all()
     assert sanitized.min() == 0.0
-    assert sanitized.max() == 255.0
+    assert sanitized.max() == 123.0
     assert sanitized[0, 0, 4] == 42.0
 
 
@@ -97,6 +107,7 @@ def test_build_training_dataset_from_sweeps_sanitizes_invalid_values(tmp_path: P
     manifest = json.loads(Path(artifacts["manifest_path"]).read_text())
     assert np.isfinite(images).all()
     assert float(images.min()) >= 0.0
-    assert float(images.max()) <= 255.0
+    assert float(images.max()) <= float(manifest["sanitization"]["clip_max"])
     assert manifest["sanitization"]["nonfinite_values_replaced"] == 2
     assert manifest["sanitization"]["finite_values_clipped"] == 2
+    assert manifest["sanitization"]["clip_max_percentile"] == 99.0

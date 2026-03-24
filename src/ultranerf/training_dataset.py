@@ -13,6 +13,41 @@ from ultranerf.probe_geometry import ProbeGeometry
 from ultranerf.training_config import DatasetSplit, write_dataset_split
 
 
+DEFAULT_HIGH_CLIP_PERCENTILE = 99.0
+DEFAULT_MAX_SAMPLES_PER_SWEEP = 200_000
+
+
+def estimate_training_clip_max(
+    images: tuple[np.ndarray, ...],
+    *,
+    percentile: float = DEFAULT_HIGH_CLIP_PERCENTILE,
+    max_samples_per_sweep: int = DEFAULT_MAX_SAMPLES_PER_SWEEP,
+) -> float:
+    """Estimate a stable per-dataset upper clip from finite image values."""
+    if percentile <= 0.0 or percentile > 100.0:
+        raise ValueError("percentile must be in the interval (0, 100]")
+    samples: list[np.ndarray] = []
+    for image_block in images:
+        array = np.asarray(image_block, dtype=np.float32)
+        finite = array[np.isfinite(array)]
+        if finite.size == 0:
+            continue
+        finite = finite[finite >= 0.0]
+        if finite.size == 0:
+            continue
+        if finite.size > max_samples_per_sweep:
+            indices = np.linspace(0, finite.size - 1, num=max_samples_per_sweep, dtype=np.int64)
+            finite = finite[indices]
+        samples.append(finite.astype(np.float32, copy=False))
+    if not samples:
+        return 255.0
+    merged = np.concatenate(samples, axis=0)
+    clip_max = float(np.percentile(merged, percentile))
+    if not np.isfinite(clip_max) or clip_max <= 0.0:
+        return 255.0
+    return clip_max
+
+
 def sanitize_training_images(images: np.ndarray, *, min_value: float = 0.0, max_value: float = 255.0) -> np.ndarray:
     """Sanitize GUI-selected training images before writing the combined dataset.
 
@@ -119,13 +154,19 @@ def build_training_dataset_from_sweeps(
     sweep_offsets: dict[str, dict[str, Any]] = {}
     sanitized_nonfinite_count = 0
     clipped_value_count = 0
+    raw_image_blocks: list[np.ndarray] = []
 
     for sweep_id in selected_ids:
         sweep = sweep_lookup[sweep_id]
-        raw_images = np.load(sweep.dataset_dir / "images.npy").astype(np.float32)
+        raw_image_blocks.append(np.load(sweep.dataset_dir / "images.npy").astype(np.float32))
+
+    clip_max = estimate_training_clip_max(tuple(raw_image_blocks))
+
+    for sweep_id, raw_images in zip(selected_ids, raw_image_blocks):
+        sweep = sweep_lookup[sweep_id]
         sanitized_nonfinite_count += int(np.size(raw_images) - np.count_nonzero(np.isfinite(raw_images)))
-        clipped_value_count += int(np.count_nonzero(np.isfinite(raw_images) & ((raw_images < 0.0) | (raw_images > 255.0))))
-        images = sanitize_training_images(raw_images)
+        clipped_value_count += int(np.count_nonzero(np.isfinite(raw_images) & ((raw_images < 0.0) | (raw_images > clip_max))))
+        images = sanitize_training_images(raw_images, max_value=clip_max)
         poses = np.load(sweep.dataset_dir / "poses.npy").astype(np.float32)
         frame_count = int(images.shape[0])
         image_chunks.append(images)
@@ -162,7 +203,8 @@ def build_training_dataset_from_sweeps(
         "sweep_offsets": sweep_offsets,
         "sanitization": {
             "clip_min": 0.0,
-            "clip_max": 255.0,
+            "clip_max": clip_max,
+            "clip_max_percentile": DEFAULT_HIGH_CLIP_PERCENTILE,
             "nonfinite_values_replaced": sanitized_nonfinite_count,
             "finite_values_clipped": clipped_value_count,
         },
