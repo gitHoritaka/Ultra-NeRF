@@ -328,10 +328,20 @@ class MultiSweepVisualizationUIController:
             else:
                 self.render_controller.render_overrides["probe_geometry_override"] = probe_geometry
             self.render_controller.mark_dirty()
+            if self.render_controller.state is not None:
+                self.render_controller.state.last_render_output = None
+                self.render_controller.state.last_render_pose_mm = None
+                self.render_controller.state.last_error = None
         if self.state is None:
             return self.initialize()
+        self.state.rendered_output = None
+        self.state.comparison_payload = self._build_comparison_payload(
+            self.state.probe_pose_mm,
+            rendered_output={},
+        )
         self._set_probe_layers(self.state.probe_pose_mm)
         self._refresh_probe_geometry_controls()
+        self._refresh_comparison_panel()
         self._refresh_render_panel()
         return self.state
 
