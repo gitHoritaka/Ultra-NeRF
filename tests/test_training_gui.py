@@ -93,3 +93,35 @@ def test_convex_training_config_uses_convex_sample_count(tmp_path: Path) -> None
     artifacts = controller.start_training()
     config_text = artifacts.config_path.read_text()
     assert "N_samples = 384" in config_text
+
+
+def test_controller_retains_latest_preview_path_across_non_preview_progress_events(tmp_path: Path) -> None:
+    write_sweep(tmp_path / "sweep_a", 1.0)
+    controller = GuiTrainingSessionController(run_root=tmp_path / "runs")
+    run_dir = tmp_path / "runs" / "gui_train_fake"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = run_dir / "preview.png"
+    preview_path.write_bytes(b"fake")
+    progress_path = run_dir / "progress.jsonl"
+    progress_path.write_text(
+        "\n".join(
+            [
+                '{"event":"validation_preview","step":10,"total_steps":100,"preview_path":"%s"}'
+                % str(preview_path.resolve()),
+                '{"event":"progress","step":11,"total_steps":100}',
+            ]
+        )
+        + "\n"
+    )
+
+    controller.training_run = type(
+        "FakeArtifacts",
+        (),
+        {
+            "run_dir": run_dir,
+            "stdout_log_path": run_dir / "stdout.log",
+            "process": type("FakeProcess", (), {"poll": lambda self: None})(),
+        },
+    )()
+    controller.poll_progress()
+    assert controller.latest_preview_path() == preview_path.resolve()

@@ -84,6 +84,7 @@ class GuiTrainingSessionController:
         self.training_run: TrainingRunArtifacts | None = None
         self._progress_line_count = 0
         self._latest_progress_event: dict[str, Any] | None = None
+        self._latest_preview_path: Path | None = None
 
     def available_scheme_paths(self) -> tuple[Path, ...]:
         return discover_training_scheme_files(self.scheme_root)
@@ -231,6 +232,7 @@ class GuiTrainingSessionController:
         )
         self._progress_line_count = 0
         self._latest_progress_event = {"event": "launched", "run_id": run_id, "run_dir": str(run_dir.resolve())}
+        self._latest_preview_path = None
         return self.training_run
 
     def poll_progress(self) -> dict[str, Any]:
@@ -243,6 +245,9 @@ class GuiTrainingSessionController:
                 for line in lines[self._progress_line_count :]:
                     if line.strip():
                         self._latest_progress_event = json.loads(line)
+                        preview_path = self._latest_progress_event.get("preview_path")
+                        if preview_path:
+                            self._latest_preview_path = Path(str(preview_path))
                 self._progress_line_count = len(lines)
         exit_code = None if self.training_run.process is None else self.training_run.process.poll()
         payload = dict(self._latest_progress_event or {"event": "launched"})
@@ -253,12 +258,15 @@ class GuiTrainingSessionController:
         return payload
 
     def load_latest_preview_image(self) -> np.ndarray | None:
-        progress = self.poll_progress()
-        preview_path = progress.get("preview_path")
-        if not preview_path:
+        self.poll_progress()
+        if self._latest_preview_path is None:
             return None
-        image = Image.open(preview_path).convert("L")
+        image = Image.open(self._latest_preview_path).convert("L")
         return np.asarray(image, dtype=np.uint8)
+
+    def latest_preview_path(self) -> Path | None:
+        self.poll_progress()
+        return self._latest_preview_path
 
 
 class _FallbackTrainingLauncherWidget:
@@ -603,16 +611,19 @@ def create_training_launcher_widget(
             f"{event} | step {step}/{total_steps} | running={bool(progress.get('is_running', False))}"
         )
         preview_image = controller.load_latest_preview_image()
+        latest_preview_path = controller.latest_preview_path()
         if preview_image is not None:
-            preview_status_label.setText(str(progress.get("preview_path", "Validation preview available")))
+            preview_status_label.setText(
+                str(latest_preview_path) if latest_preview_path is not None else "Validation preview available"
+            )
             height, width = preview_image.shape
             qimage = QImage(preview_image.data, width, height, width, QImage.Format_Grayscale8)
             pixmap = QPixmap.fromImage(qimage)
             scaled = pixmap.scaledToHeight(420, Qt.SmoothTransformation)
             preview_image_label.setPixmap(scaled)
             preview_image_label.resize(scaled.size())
-        elif progress.get("preview_path"):
-            preview_status_label.setText(f"Validation preview: {progress.get('preview_path')}")
+        elif latest_preview_path is not None:
+            preview_status_label.setText(f"Validation preview: {latest_preview_path}")
             preview_image_label.clear()
         else:
             preview_status_label.setText("No validation preview available.")
