@@ -297,6 +297,7 @@ def create_training_launcher_widget(
             QScrollArea,
             QSpinBox,
             QDoubleSpinBox,
+            QSizePolicy,
             QVBoxLayout,
             QWidget,
         )
@@ -443,14 +444,21 @@ def create_training_launcher_widget(
     status_label = QLabel("Ready")
     progress_bar = QProgressBar()
     progress_bar.setRange(0, 100)
-    preview_label = QLabel("No validation preview available.")
-    preview_label.setMinimumHeight(220)
-    preview_label.setWordWrap(True)
+    preview_status_label = QLabel("No validation preview available.")
+    preview_status_label.setWordWrap(True)
+    preview_scroll = QScrollArea()
+    preview_scroll.setWidgetResizable(True)
+    preview_scroll.setMinimumHeight(320)
+    preview_image_label = QLabel()
+    preview_image_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+    preview_image_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+    preview_scroll.setWidget(preview_image_label)
     train_button = QPushButton("Train")
     train_button.setEnabled(False)
     progress_layout.addWidget(status_label)
     progress_layout.addWidget(progress_bar)
-    progress_layout.addWidget(preview_label)
+    progress_layout.addWidget(preview_status_label)
+    progress_layout.addWidget(preview_scroll)
     progress_layout.addWidget(train_button)
     content_layout.addWidget(progress_group)
     content_layout.addStretch(1)
@@ -596,12 +604,19 @@ def create_training_launcher_widget(
         )
         preview_image = controller.load_latest_preview_image()
         if preview_image is not None:
-            preview_label.setText("")
+            preview_status_label.setText(str(progress.get("preview_path", "Validation preview available")))
             height, width = preview_image.shape
             qimage = QImage(preview_image.data, width, height, width, QImage.Format_Grayscale8)
-            preview_label.setPixmap(QPixmap.fromImage(qimage).scaledToWidth(320))
+            pixmap = QPixmap.fromImage(qimage)
+            scaled = pixmap.scaledToHeight(420, Qt.SmoothTransformation)
+            preview_image_label.setPixmap(scaled)
+            preview_image_label.resize(scaled.size())
         elif progress.get("preview_path"):
-            preview_label.setText(f"Validation preview: {progress.get('preview_path')}")
+            preview_status_label.setText(f"Validation preview: {progress.get('preview_path')}")
+            preview_image_label.clear()
+        else:
+            preview_status_label.setText("No validation preview available.")
+            preview_image_label.clear()
         if progress.get("exit_code") is not None and not bool(progress.get("is_running", False)):
             timer.stop()
             if int(progress.get("exit_code")) == 0:
