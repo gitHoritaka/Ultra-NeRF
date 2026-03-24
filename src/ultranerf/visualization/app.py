@@ -225,7 +225,7 @@ def prepare_visualization_app(
         fusion_device=fusion_device,
         reduction_mode=reduction_mode,
     )
-    trajectory = build_trajectory_overlay(poses_mm)
+    trajectory = build_trajectory_overlay(poses_mm, probe_geometry=probe_geometry)
     return VisualizationAppState(
         dataset_dir=Path(dataset_dir),
         fused_volume=fused_volume,

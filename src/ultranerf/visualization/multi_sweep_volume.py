@@ -85,7 +85,11 @@ def build_sweep_overlay(
             device=fusion_device,
             reduction_mode=reduction_mode,
         )
-    trajectory = build_trajectory_overlay(sweep.poses_mm, axis_stride=axis_stride)
+    trajectory = build_trajectory_overlay(
+        sweep.poses_mm,
+        probe_geometry=sweep.probe_geometry,
+        axis_stride=axis_stride,
+    )
     return SweepVolumeOverlay(
         sweep_id=sweep.sweep_id,
         display_name=sweep.display_name or sweep.sweep_id,
