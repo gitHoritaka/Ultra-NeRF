@@ -32,6 +32,8 @@ now lives under `src/ultranerf/`.
 Start here:
 
 - repository layout: [`docs/REPO_LAYOUT.md`](docs/REPO_LAYOUT.md)
+- training config and schemes: [`docs/TRAINING_CONFIG.md`](docs/TRAINING_CONFIG.md)
+- GUI training workflow: [`docs/GUI_TRAINING_WORKFLOW.md`](docs/GUI_TRAINING_WORKFLOW.md)
 - convex support: [`docs/CONVEX_SUPPORT.md`](docs/CONVEX_SUPPORT.md)
 - convex MIP mode: [`docs/CONVEX_MIP_SUPPORT.md`](docs/CONVEX_MIP_SUPPORT.md)
 - visualizer overview: [`docs/VISUALIZER_OVERVIEW.md`](docs/VISUALIZER_OVERVIEW.md)
@@ -68,6 +70,15 @@ The current workspace supports:
 - nearest recorded-frame comparison
 - NeRF rendering from the current probe pose
 - dropdown switching between the final render and intermediate acoustic maps
+
+The multi-sweep GUI also includes a training launcher:
+
+- discover compatible sweep folders
+- choose training and validation sweeps
+- enter probe geometry
+- open a preview window to confirm geometry placement
+- select a JSON training scheme
+- launch `run_ultranerf.py` in the background and monitor validation previews
 
 Convex note:
 
@@ -232,6 +243,14 @@ What it does:
 - writes checkpoints to `logs/<expname>/`
 
 Configuration is parsed from `src/ultranerf/unerf_config.py`, with example configs in `configs/`.
+
+The recommended declarative path is:
+
+- a flat training config for dataset and probe/runtime fields
+- a referenced JSON training scheme for step count, loss composition, and related recipe behavior
+
+See [`docs/TRAINING_CONFIG.md`](docs/TRAINING_CONFIG.md) and
+[`configs/training_schemes/`](configs/training_schemes).
 
 ### BARF pose refinement
 

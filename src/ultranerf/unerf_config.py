@@ -22,6 +22,30 @@ def config_parser():
     parser.add_argument("--ssim_filter_size", type=int, default=7)
     parser.add_argument("--ssim_lambda", type=float, default=0.75)
     parser.add_argument("--loss", type=str, default="l2")
+    parser.add_argument(
+        "--training_scheme",
+        type=str,
+        default=None,
+        help="Optional JSON training-scheme file that defines loss composition and runtime overrides",
+    )
+    parser.add_argument(
+        "--split_file",
+        type=str,
+        default=None,
+        help="Optional JSON file defining explicit train/validation frame indices",
+    )
+    parser.add_argument(
+        "--validation_preview_every",
+        type=int,
+        default=1000,
+        help="Render and save one validation preview every N steps when validation data is available",
+    )
+    parser.add_argument(
+        "--validation_preview_index",
+        type=int,
+        default=0,
+        help="Stable index into the validation set used for preview rendering",
+    )
     parser.add_argument("--probe_depth", type=float, default=140.0)
     parser.add_argument("--probe_width", type=float, default=80.0)
     parser.add_argument(

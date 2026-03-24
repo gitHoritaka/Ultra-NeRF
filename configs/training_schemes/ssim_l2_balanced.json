@@ -1,0 +1,35 @@
+{
+  "name": "SSIM + L2 Balanced",
+  "description": "Warm up with L2, then combine SSIM and L2 for image-space training.",
+  "training_overrides": {
+    "n_iters": 5000,
+    "i_print": 200,
+    "i_img": 500,
+    "i_weights": 1000,
+    "validation_preview_every": 500
+  },
+  "loss_terms": [
+    {
+      "name": "l2",
+      "key": "l2_warmup",
+      "weight": 1.0,
+      "start_step": 0,
+      "end_step": 1000
+    },
+    {
+      "name": "ssim",
+      "key": "ssim",
+      "weight": 0.75,
+      "start_step": 1000
+    },
+    {
+      "name": "l2",
+      "key": "l2",
+      "weight": 0.25,
+      "start_step": 1000
+    }
+  ],
+  "regularization": {
+    "reg": false
+  }
+}

@@ -1,0 +1,196 @@
+"""Helpers for discovering sweeps and preparing datasets for GUI-launched training."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+import json
+
+import numpy as np
+
+from ultranerf.probe_geometry import ProbeGeometry
+from ultranerf.training_config import DatasetSplit, write_dataset_split
+
+
+@dataclass(frozen=True)
+class DiscoveredTrainingSweep:
+    """One sweep directory that looks compatible with UltraNeRF training."""
+
+    sweep_id: str
+    dataset_dir: Path
+    frame_count: int
+    image_shape: tuple[int, int]
+    dtype: str
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "sweep_id": self.sweep_id,
+            "dataset_dir": str(self.dataset_dir.resolve()),
+            "frame_count": self.frame_count,
+            "image_shape": list(self.image_shape),
+            "dtype": self.dtype,
+        }
+
+
+def discover_training_sweeps(root_dir: str | Path) -> tuple[DiscoveredTrainingSweep, ...]:
+    """Find compatible `images.npy`/`poses.npy` sweep directories under a root."""
+    root = Path(root_dir)
+    discovered: list[DiscoveredTrainingSweep] = []
+    for child in sorted(root.iterdir()):
+        if not child.is_dir():
+            continue
+        images_path = child / "images.npy"
+        poses_path = child / "poses.npy"
+        if not images_path.exists() or not poses_path.exists():
+            continue
+        images = np.load(images_path, mmap_mode="r")
+        poses = np.load(poses_path, mmap_mode="r")
+        if images.ndim != 3 or poses.ndim != 3 or images.shape[0] != poses.shape[0]:
+            continue
+        discovered.append(
+            DiscoveredTrainingSweep(
+                sweep_id=child.name,
+                dataset_dir=child,
+                frame_count=int(images.shape[0]),
+                image_shape=(int(images.shape[1]), int(images.shape[2])),
+                dtype=str(images.dtype),
+            )
+        )
+    return tuple(discovered)
+
+
+def validate_sweep_selection(
+    sweeps: tuple[DiscoveredTrainingSweep, ...],
+    *,
+    training_ids: tuple[str, ...],
+    validation_ids: tuple[str, ...],
+) -> None:
+    """Validate a GUI-selected train/validation split."""
+    if not training_ids:
+        raise ValueError("At least one training sweep must be selected")
+    if not validation_ids:
+        raise ValueError("At least one validation sweep must be selected")
+    known_ids = {sweep.sweep_id for sweep in sweeps}
+    for sweep_id in training_ids + validation_ids:
+        if sweep_id not in known_ids:
+            raise ValueError(f"Unknown sweep selected: {sweep_id}")
+    selected_shapes = {
+        sweep.image_shape
+        for sweep in sweeps
+        if sweep.sweep_id in set(training_ids + validation_ids)
+    }
+    if len(selected_shapes) != 1:
+        raise ValueError("Selected training and validation sweeps must share the same image shape")
+
+
+def build_training_dataset_from_sweeps(
+    sweeps: tuple[DiscoveredTrainingSweep, ...],
+    *,
+    training_ids: tuple[str, ...],
+    validation_ids: tuple[str, ...],
+    output_dir: str | Path,
+) -> dict[str, Path]:
+    """Concatenate selected sweeps into one dataset plus explicit split metadata."""
+    validate_sweep_selection(sweeps, training_ids=training_ids, validation_ids=validation_ids)
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    sweep_lookup = {sweep.sweep_id: sweep for sweep in sweeps}
+    selected_ids = tuple(dict.fromkeys(training_ids + validation_ids))
+    image_chunks: list[np.ndarray] = []
+    pose_chunks: list[np.ndarray] = []
+    train_indices: list[int] = []
+    validation_indices: list[int] = []
+    offset = 0
+    sweep_offsets: dict[str, dict[str, Any]] = {}
+
+    for sweep_id in selected_ids:
+        sweep = sweep_lookup[sweep_id]
+        images = np.load(sweep.dataset_dir / "images.npy").astype(np.float32)
+        poses = np.load(sweep.dataset_dir / "poses.npy").astype(np.float32)
+        frame_count = int(images.shape[0])
+        image_chunks.append(images)
+        pose_chunks.append(poses)
+        local_indices = list(range(offset, offset + frame_count))
+        if sweep_id in training_ids:
+            train_indices.extend(local_indices)
+        if sweep_id in validation_ids:
+            validation_indices.extend(local_indices)
+        sweep_offsets[sweep_id] = {
+            "offset": offset,
+            "frame_count": frame_count,
+            "dataset_dir": str(sweep.dataset_dir.resolve()),
+        }
+        offset += frame_count
+
+    combined_images = np.concatenate(image_chunks, axis=0)
+    combined_poses = np.concatenate(pose_chunks, axis=0)
+    np.save(output_root / "images.npy", combined_images)
+    np.save(output_root / "poses.npy", combined_poses)
+
+    split = DatasetSplit(
+        train_indices=tuple(train_indices),
+        validation_indices=tuple(validation_indices),
+        metadata={"selected_training_sweeps": list(training_ids), "selected_validation_sweeps": list(validation_ids)},
+    )
+    split_path = write_dataset_split(output_root / "split.json", split)
+
+    manifest_payload = {
+        "frame_count": int(combined_images.shape[0]),
+        "image_shape": list(combined_images.shape[1:]),
+        "selected_training_sweeps": list(training_ids),
+        "selected_validation_sweeps": list(validation_ids),
+        "sweep_offsets": sweep_offsets,
+    }
+    manifest_path = output_root / "training_dataset_manifest.json"
+    manifest_path.write_text(json.dumps(manifest_payload, indent=2))
+    return {
+        "dataset_dir": output_root,
+        "images_path": output_root / "images.npy",
+        "poses_path": output_root / "poses.npy",
+        "split_path": split_path,
+        "manifest_path": manifest_path,
+    }
+
+
+def build_preview_manifest(
+    sweeps: tuple[DiscoveredTrainingSweep, ...],
+    *,
+    selected_ids: tuple[str, ...],
+    probe_geometry: ProbeGeometry,
+    output_path: str | Path,
+) -> Path:
+    """Write a temporary multi-sweep manifest for training preview."""
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "probe_geometry": {
+            "width_mm": float(probe_geometry.width_mm),
+            "depth_mm": float(probe_geometry.depth_mm),
+            "probe_type": probe_geometry.probe_type,
+            "convex_center_x": probe_geometry.convex_center_x,
+            "convex_center_y": probe_geometry.convex_center_y,
+            "convex_angle_deg": probe_geometry.convex_angle_deg,
+            "convex_outer_radius_px": probe_geometry.convex_outer_radius_px,
+            "convex_inner_radius_px": probe_geometry.convex_inner_radius_px,
+            "convex_scale_x_mm": probe_geometry.convex_scale_x_mm,
+            "convex_scale_y_mm": probe_geometry.convex_scale_y_mm,
+            "convex_n_rays": probe_geometry.convex_n_rays,
+            "convex_n_samples": probe_geometry.convex_n_samples,
+        },
+        "active_sweep_id": selected_ids[0] if selected_ids else None,
+        "comparison_policy": "all_enabled",
+        "metadata": {"source": "gui_training_preview"},
+        "sweeps": [
+            {
+                "sweep_id": sweep.sweep_id,
+                "dataset_dir": str(sweep.dataset_dir.resolve()),
+                "display_name": sweep.sweep_id,
+            }
+            for sweep in sweeps
+            if sweep.sweep_id in selected_ids
+        ],
+    }
+    output.write_text(json.dumps(payload, indent=2))
+    return output

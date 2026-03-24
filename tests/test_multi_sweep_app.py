@@ -228,3 +228,4 @@ def test_launch_multi_sweep_visualization_app_initializes_fake_viewer(monkeypatc
     dock_areas = {call["name"]: call["area"] for call in session.viewer.window.calls}
     assert dock_areas["Multi-Sweep Controls"] == "right"
     assert dock_areas["Probe Controls"] == "left"
+    assert dock_areas["Training"] == "left"

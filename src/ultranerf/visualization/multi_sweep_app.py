@@ -165,6 +165,7 @@ def _hide_main_viewer_side_docks(viewer: Any) -> None:
 def _install_multi_view_workspace(
     viewer: Any,
     *,
+    training_widget: Any,
     probe_controls_widget: Any,
     probe_geometry_widget: Any,
     multi_sweep_controls_widget: Any,
@@ -194,7 +195,7 @@ def _install_multi_view_workspace(
             layout.addWidget(widget)
         return column
 
-    left_controls_column = _build_column(probe_controls_widget, probe_geometry_widget, minimum_width=300)
+    left_controls_column = _build_column(training_widget, probe_controls_widget, probe_geometry_widget, minimum_width=300)
 
     review_stack = QSplitter()
     review_stack.setOrientation(Qt.Vertical)
@@ -360,6 +361,7 @@ def launch_multi_sweep_visualization_app(
     from ultranerf.visualization.probe_controls import create_probe_controls
     from ultranerf.visualization.probe_geometry_controls import create_probe_geometry_controls
     from ultranerf.visualization.render_panel import create_render_panel
+    from ultranerf.visualization.training_gui import create_training_launcher_widget
     from ultranerf.visualization.volume_viewer import launch_basic_volume_viewer
 
     if render_controller is None and nerf_config is not None:
@@ -377,6 +379,26 @@ def launch_multi_sweep_visualization_app(
         state,
         render_controller=render_controller,
     )
+    preview_sessions: list[Any] = []
+
+    def _launch_training_preview(manifest_path: Path) -> Any:
+        preview_state = prepare_multi_sweep_visualization_app(
+            manifest_path=manifest_path,
+            spacing_mm=state.scene_controller.spacing_mm,
+            pixel_stride=state.scene_controller.pixel_stride,
+            preset_name=state.preset_name,
+            cache_root=state.cache_root,
+            fusion_device=state.fusion_device,
+            reduction_mode=state.reduction_mode,
+        )
+        session = launch_multi_sweep_visualization_app(
+            preview_state,
+            initial_pose_index=0,
+            nerf_config=None,
+        )
+        preview_sessions.append(session)
+        return session
+
     if hasattr(viewer, "window"):
         use_multi_view_workspace = _can_build_multi_view_workspace(viewer)
 
@@ -399,6 +421,7 @@ def launch_multi_sweep_visualization_app(
         ui_controller.attach_probe_controls(probe_controls)
         probe_geometry_controls = create_probe_geometry_controls(ui_controller)
         ui_controller.attach_probe_geometry_controls(probe_geometry_controls)
+        training_widget = create_training_launcher_widget(preview_launcher=_launch_training_preview)
 
         if use_multi_view_workspace:
             from ultranerf.visualization.embedded_napari_panels import (
@@ -416,6 +439,7 @@ def launch_multi_sweep_visualization_app(
 
             _install_multi_view_workspace(
                 viewer,
+                training_widget=training_widget,
                 probe_controls_widget=probe_controls.widget,
                 probe_geometry_widget=probe_geometry_controls.widget,
                 multi_sweep_controls_widget=multi_sweep_controls.widget,
@@ -427,6 +451,7 @@ def launch_multi_sweep_visualization_app(
         else:
             viewer.window.add_dock_widget(multi_sweep_controls.widget, area="right", name="Multi-Sweep Controls")
             viewer.window.add_dock_widget(sweep_selection_controls.widget, area="right", name="Sweep Selection")
+            viewer.window.add_dock_widget(training_widget, area="left", name="Training")
             viewer.window.add_dock_widget(probe_controls.widget, area="left", name="Probe Controls")
             viewer.window.add_dock_widget(probe_geometry_controls.widget, area="left", name="Probe Geometry")
             comparison_panel = create_comparison_panel()

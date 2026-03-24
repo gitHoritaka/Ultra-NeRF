@@ -9,6 +9,15 @@ python run_ultranerf.py --config configs/config_base_nerf.txt --expname my_run
 python run_barf.py --config configs/config_barf.txt
 ```
 
+UltraNeRF training configs can now also reference a JSON `training_scheme`
+file. Those live under [`configs/training_schemes/`](training_schemes).
+
+That split is intentional:
+
+- flat config: dataset path, probe geometry, output paths, runtime wiring
+- training scheme: step count, loss composition, cadence, and other reusable
+  recipe behavior
+
 Common groups:
 
 - `config_base_nerf.txt`

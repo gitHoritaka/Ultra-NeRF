@@ -1,0 +1,21 @@
+{
+  "name": "L2 Baseline",
+  "description": "Simple intensity reconstruction with pure L2 loss.",
+  "training_overrides": {
+    "n_iters": 3000,
+    "i_print": 200,
+    "i_img": 500,
+    "i_weights": 1000,
+    "validation_preview_every": 500
+  },
+  "loss_terms": [
+    {
+      "name": "l2",
+      "key": "l2",
+      "weight": 1.0
+    }
+  ],
+  "regularization": {
+    "reg": false
+  }
+}

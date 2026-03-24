@@ -671,8 +671,23 @@ def render_us(
     return all_ret
 
 
-def compute_loss(output, target, args, losses, i):
+def compute_loss(output, target, args, losses, i, training_scheme=None):
     loss = {}
+
+    if training_scheme is not None:
+        active_terms = training_scheme.active_loss_terms(int(i))
+        if not active_terms:
+            raise ValueError(f"Training scheme {training_scheme.name} produced no active losses at step {i}")
+        key_counts = {}
+        for term in active_terms:
+            if term.name not in losses:
+                raise KeyError(f"Loss '{term.name}' is not available in the training runtime")
+            base_key = term.resolved_key
+            suffix = key_counts.get(base_key, 0)
+            key_counts[base_key] = suffix + 1
+            key = base_key if suffix == 0 else f"{base_key}_{suffix + 1}"
+            loss[key] = (float(term.weight), losses[term.name](output, target))
+        return loss
 
     if args.loss == "l2" or i < args.r_warm_up_it:
         l2_intensity_loss = losses['l2'](output, target)
