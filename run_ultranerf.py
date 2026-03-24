@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from monai.losses.ssim_loss import SSIMLoss
 from monai.losses import LocalNormalizedCrossCorrelationLoss
 
@@ -52,6 +53,8 @@ from ultranerf.training_config import (
     write_resolved_training_metadata,
 )
 from ultranerf.unerf_config import config_parser
+from ultranerf.visualization.comparison_panel import normalize_recorded_image_for_display
+from ultranerf.visualization.render_panel import normalize_image_for_display
 
 if torch.cuda.is_available():
     torch.cuda.set_per_process_memory_fraction(0.95)
@@ -103,20 +106,16 @@ def _save_validation_preview(
     output_dir.mkdir(parents=True, exist_ok=True)
     step_path = output_dir / f"{step:08d}.png"
     latest_path = output_dir / "latest.png"
-
-    fig = plt.figure(figsize=(10, 5))
-    plt.subplot(1, 2, 1)
-    plt.title("Validation Target")
-    plt.imshow(target.detach().cpu().numpy()[0, 0].T, cmap="gray")
-    plt.axis("off")
-    plt.subplot(1, 2, 2)
-    plt.title("Validation Render")
-    plt.imshow(output_image.detach().cpu().numpy()[0, 0].T, cmap="gray")
-    plt.axis("off")
-    fig.tight_layout()
-    fig.savefig(step_path, bbox_inches="tight", dpi=160)
-    fig.savefig(latest_path, bbox_inches="tight", dpi=160)
-    plt.close(fig)
+    target_buffer = normalize_recorded_image_for_display(target.detach().cpu().numpy()[0, 0])
+    render_buffer = normalize_image_for_display(output_image.detach().cpu().numpy()[0, 0])
+    if target_buffer.shape != render_buffer.shape:
+        raise ValueError(
+            f"Validation preview expects matching target/render shapes, got {target_buffer.shape} and {render_buffer.shape}"
+        )
+    separator = np.zeros((target_buffer.shape[0], 12), dtype=np.uint8)
+    preview_buffer = np.concatenate([target_buffer, separator, render_buffer], axis=1)
+    Image.fromarray(preview_buffer, mode="L").save(step_path)
+    Image.fromarray(preview_buffer, mode="L").save(latest_path)
     return latest_path
 
 
