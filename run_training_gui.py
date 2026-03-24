@@ -125,7 +125,10 @@ def main() -> int:
     dialog = getattr(launcher_widget, "dialog", None)
     if dialog is None:
         raise SystemExit("The training GUI could not be initialized in this environment")
-    dialog.show()
+    if hasattr(dialog, "showMaximized"):
+        dialog.showMaximized()
+    else:
+        dialog.show()
     dialog.raise_()
     dialog.activateWindow()
     return int(app.exec_())
