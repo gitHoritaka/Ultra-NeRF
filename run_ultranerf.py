@@ -60,6 +60,9 @@ if torch.cuda.is_available():
     torch.cuda.set_per_process_memory_fraction(0.95)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+VALIDATION_PREVIEW_SEPARATOR_PX = 24
+VALIDATION_PREVIEW_SAMPLE_COUNT = 6
+VALIDATION_PREVIEW_FRAME_DURATION_MS = 350
 
 
 def _select_training_and_validation_indices(
@@ -94,28 +97,71 @@ def _append_progress_event(run_dir: str | Path, payload: dict[str, object]) -> P
     return progress_path
 
 
-def _save_validation_preview(
+def _compose_validation_preview_frame(
     *,
-    basedir: str,
-    expname: str,
-    step: int,
     target: torch.Tensor,
     output_image: torch.Tensor,
-) -> Path:
-    output_dir = Path(basedir) / expname / "validation_preview"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    step_path = output_dir / f"{step:08d}.png"
-    latest_path = output_dir / "latest.png"
+    separator_px: int = VALIDATION_PREVIEW_SEPARATOR_PX,
+) -> np.ndarray:
     target_buffer = normalize_recorded_image_for_display(target.detach().cpu().numpy()[0, 0])
     render_buffer = normalize_image_for_display(output_image.detach().cpu().numpy()[0, 0])
     if target_buffer.shape != render_buffer.shape:
         raise ValueError(
             f"Validation preview expects matching target/render shapes, got {target_buffer.shape} and {render_buffer.shape}"
         )
-    separator = np.zeros((target_buffer.shape[0], 12), dtype=np.uint8)
-    preview_buffer = np.concatenate([target_buffer, separator, render_buffer], axis=1)
-    Image.fromarray(preview_buffer, mode="L").save(step_path)
-    Image.fromarray(preview_buffer, mode="L").save(latest_path)
+    separator = np.zeros((target_buffer.shape[0], int(separator_px)), dtype=np.uint8)
+    return np.concatenate([target_buffer, separator, render_buffer], axis=1)
+
+
+def _sample_validation_preview_indices(
+    validation_indices: np.ndarray,
+    *,
+    preferred_index: int,
+    sample_count: int = VALIDATION_PREVIEW_SAMPLE_COUNT,
+) -> list[int]:
+    if len(validation_indices) == 0:
+        return []
+    max_count = max(1, min(int(sample_count), len(validation_indices)))
+    positions = np.linspace(0, len(validation_indices) - 1, num=max_count, dtype=np.int64)
+    selected = [int(validation_indices[pos]) for pos in positions]
+    preferred = int(preferred_index)
+    if preferred in validation_indices.tolist() and preferred not in selected:
+        selected[0] = preferred
+    deduped: list[int] = []
+    for idx in selected:
+        if idx not in deduped:
+            deduped.append(idx)
+    return deduped
+
+
+def _save_validation_preview(
+    *,
+    basedir: str,
+    expname: str,
+    step: int,
+    frames: list[np.ndarray],
+) -> Path:
+    output_dir = Path(basedir) / expname / "validation_preview"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if not frames:
+        raise ValueError("Validation preview requires at least one frame")
+    pil_frames = [Image.fromarray(frame, mode="L") for frame in frames]
+    step_path = output_dir / f"{step:08d}.gif"
+    latest_path = output_dir / "latest.gif"
+    pil_frames[0].save(
+        step_path,
+        save_all=True,
+        append_images=pil_frames[1:],
+        duration=VALIDATION_PREVIEW_FRAME_DURATION_MS,
+        loop=0,
+    )
+    pil_frames[0].save(
+        latest_path,
+        save_all=True,
+        append_images=pil_frames[1:],
+        duration=VALIDATION_PREVIEW_FRAME_DURATION_MS,
+        loop=0,
+    )
     return latest_path
 
 
@@ -307,21 +353,32 @@ def train():
 
         if len(i_val) > 0 and args.validation_preview_every > 0 and (i + 1) % int(args.validation_preview_every) == 0:
             val_idx = int(i_val[int(args.validation_preview_index) % len(i_val)])
-            val_target_array = images[val_idx]
-            if probe_geometry.is_convex:
-                val_target_array = remap_image_to_convex_grid(val_target_array, probe_geometry)
-            val_target = torch.Tensor(val_target_array).to(device).unsqueeze(0).unsqueeze(0)
-            val_pose = torch.from_numpy(poses[val_idx, :3, :4]).to(device).unsqueeze(0)
+            sampled_validation_indices = _sample_validation_preview_indices(
+                i_val,
+                preferred_index=val_idx,
+            )
+            preview_frames: list[np.ndarray] = []
             with torch.no_grad():
-                validation_output = render_us(
-                    H, W, sw, sh, c2w=val_pose, chunk=args.chunk, retraw=True, **render_kwargs_test
-                )
+                for current_val_idx in sampled_validation_indices:
+                    val_target_array = images[current_val_idx]
+                    if probe_geometry.is_convex:
+                        val_target_array = remap_image_to_convex_grid(val_target_array, probe_geometry)
+                    val_target = torch.Tensor(val_target_array).to(device).unsqueeze(0).unsqueeze(0)
+                    val_pose = torch.from_numpy(poses[current_val_idx, :3, :4]).to(device).unsqueeze(0)
+                    validation_output = render_us(
+                        H, W, sw, sh, c2w=val_pose, chunk=args.chunk, retraw=True, **render_kwargs_test
+                    )
+                    preview_frames.append(
+                        _compose_validation_preview_frame(
+                            target=val_target,
+                            output_image=validation_output["intensity_map"],
+                        )
+                    )
             preview_path = _save_validation_preview(
                 basedir=basedir,
                 expname=expname,
                 step=i + 1,
-                target=val_target,
-                output_image=validation_output["intensity_map"],
+                frames=preview_frames,
             )
             _append_progress_event(
                 Path(basedir) / expname,
@@ -330,6 +387,7 @@ def train():
                     "step": int(i + 1),
                     "total_steps": int(N_iters),
                     "validation_index": val_idx,
+                    "validation_indices": list(sampled_validation_indices),
                     "preview_path": str(preview_path.resolve()),
                     "training_loss": float(total_loss.item()),
                 },

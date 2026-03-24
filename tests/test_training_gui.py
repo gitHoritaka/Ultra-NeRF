@@ -177,7 +177,7 @@ def test_controller_can_open_completed_result_visualization(tmp_path: Path) -> N
 
 def test_validation_preview_display_size_uses_physical_scale() -> None:
     linear = ProbeGeometry(width_mm=80.0, depth_mm=140.0)
-    assert validation_preview_display_size_px(linear) == (412, 350)
+    assert validation_preview_display_size_px(linear) == (424, 350)
 
     convex = ProbeGeometry(
         width_mm=125.0,
@@ -193,4 +193,4 @@ def test_validation_preview_display_size_uses_physical_scale() -> None:
         convex_n_rays=250,
         convex_n_samples=384,
     )
-    assert validation_preview_display_size_px(convex) == (636, 400)
+    assert validation_preview_display_size_px(convex) == (648, 400)

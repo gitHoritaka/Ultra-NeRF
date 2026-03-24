@@ -32,7 +32,7 @@ ProcessFactory = Callable[..., subprocess.Popen]
 PreviewLauncher = Callable[[Path], Any]
 ResultLauncher = Callable[[Path, Path, Path], Any]
 VALIDATION_PREVIEW_MM_PER_PX = 0.4
-VALIDATION_PREVIEW_SEPARATOR_PX = 12
+VALIDATION_PREVIEW_SEPARATOR_PX = 24
 
 
 def _default_process_factory(*args: Any, **kwargs: Any) -> subprocess.Popen:
@@ -349,8 +349,8 @@ def create_training_launcher_widget(
 ) -> Any:
     """Create a Qt widget that opens the training workflow dialog."""
     try:
-        from PyQt5.QtCore import Qt, QTimer
-        from PyQt5.QtGui import QImage, QPixmap
+        from PyQt5.QtCore import QSize, Qt, QTimer
+        from PyQt5.QtGui import QImage, QMovie, QPixmap
         from PyQt5.QtWidgets import (
             QApplication,
             QCheckBox,
@@ -545,6 +545,8 @@ def create_training_launcher_widget(
 
     timer = QTimer(dialog)
     timer.setInterval(1000)
+    current_preview_movie: QMovie | None = None
+    current_preview_path: Path | None = None
 
     def current_geometry() -> ProbeGeometry:
         probe_type = probe_type_combo.currentText()
@@ -673,6 +675,7 @@ def create_training_launcher_widget(
         refresh_train_button()
 
     def update_progress_ui() -> None:
+        nonlocal current_preview_movie, current_preview_path
         progress = controller.poll_progress()
         event = str(progress.get("event", "idle"))
         if event == "idle":
@@ -683,32 +686,53 @@ def create_training_launcher_widget(
         status_label.setText(
             f"{event} | step {step}/{total_steps} | running={bool(progress.get('is_running', False))}"
         )
-        preview_image = controller.load_latest_preview_image()
         latest_preview_path = controller.latest_preview_path()
-        if preview_image is not None:
+        if latest_preview_path is not None and latest_preview_path.suffix.lower() == ".gif":
             preview_status_label.setText(
                 str(latest_preview_path) if latest_preview_path is not None else "Validation preview available"
             )
-            height, width = preview_image.shape
-            qimage = QImage(preview_image.data, width, height, width, QImage.Format_Grayscale8)
-            pixmap = QPixmap.fromImage(qimage)
             target_width, target_height = validation_preview_display_size_px(controller.probe_geometry)
-            scaled = pixmap.scaled(
-                target_width,
-                target_height,
-                Qt.IgnoreAspectRatio,
-                Qt.SmoothTransformation,
-            )
-            preview_image_label.setPixmap(scaled)
-            preview_image_label.resize(scaled.size())
-        elif latest_preview_path is not None:
-            preview_status_label.setText(f"Validation preview: {latest_preview_path}")
-            preview_image_label.clear()
+            if current_preview_movie is None or current_preview_path != latest_preview_path:
+                if current_preview_movie is not None:
+                    current_preview_movie.stop()
+                current_preview_movie = QMovie(str(latest_preview_path))
+                current_preview_path = latest_preview_path
+                preview_image_label.setMovie(current_preview_movie)
+            current_preview_movie.setScaledSize(QSize(target_width, target_height))
+            if current_preview_movie.state() != QMovie.Running:
+                current_preview_movie.start()
+            preview_image_label.resize(target_width, target_height)
         else:
-            preview_status_label.setText(
-                f"No validation preview available. Display scale: {VALIDATION_PREVIEW_MM_PER_PX:.1f} mm/px"
-            )
-            preview_image_label.clear()
+            preview_image = controller.load_latest_preview_image()
+            if current_preview_movie is not None:
+                current_preview_movie.stop()
+                current_preview_movie = None
+                current_preview_path = None
+                preview_image_label.setMovie(None)
+            if preview_image is not None:
+                preview_status_label.setText(
+                    str(latest_preview_path) if latest_preview_path is not None else "Validation preview available"
+                )
+                height, width = preview_image.shape
+                qimage = QImage(preview_image.data, width, height, width, QImage.Format_Grayscale8)
+                pixmap = QPixmap.fromImage(qimage)
+                target_width, target_height = validation_preview_display_size_px(controller.probe_geometry)
+                scaled = pixmap.scaled(
+                    target_width,
+                    target_height,
+                    Qt.IgnoreAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+                preview_image_label.setPixmap(scaled)
+                preview_image_label.resize(scaled.size())
+            elif latest_preview_path is not None:
+                preview_status_label.setText(f"Validation preview: {latest_preview_path}")
+                preview_image_label.clear()
+            else:
+                preview_status_label.setText(
+                    f"No validation preview available. Display scale: {VALIDATION_PREVIEW_MM_PER_PX:.1f} mm/px"
+                )
+                preview_image_label.clear()
         if progress.get("exit_code") is not None and not bool(progress.get("is_running", False)):
             timer.stop()
             if int(progress.get("exit_code")) == 0:
