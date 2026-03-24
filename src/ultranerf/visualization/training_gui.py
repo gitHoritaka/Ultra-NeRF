@@ -41,7 +41,7 @@ def _default_run_root() -> Path:
 
 
 def _session_timestamp() -> str:
-    return time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+    return f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}_{int((time.time() % 1.0) * 1000):03d}"
 
 
 @dataclass
@@ -281,6 +281,7 @@ def create_training_launcher_widget(
             QListWidgetItem,
             QMessageBox,
             QPushButton,
+            QScrollArea,
             QSpinBox,
             QDoubleSpinBox,
             QVBoxLayout,
@@ -325,6 +326,13 @@ def create_training_launcher_widget(
     dialog.setWindowTitle("UltraNeRF Training")
     dialog.setMinimumWidth(720)
     dialog_layout = QVBoxLayout(dialog)
+    scroll_area = QScrollArea()
+    scroll_area.setWidgetResizable(True)
+    dialog_layout.addWidget(scroll_area)
+    content_widget = QWidget()
+    content_widget.setMinimumWidth(680)
+    scroll_area.setWidget(content_widget)
+    content_layout = QVBoxLayout(content_widget)
 
     source_group = QGroupBox("Sweep Discovery")
     source_layout = QVBoxLayout(source_group)
@@ -343,7 +351,7 @@ def create_training_launcher_widget(
     validation_combo = QComboBox()
     source_layout.addWidget(QLabel("Validation Sweep"))
     source_layout.addWidget(validation_combo)
-    dialog_layout.addWidget(source_group)
+    content_layout.addWidget(source_group)
 
     geometry_group = QGroupBox("Probe Geometry")
     geometry_form = QFormLayout(geometry_group)
@@ -406,7 +414,7 @@ def create_training_launcher_widget(
     preview_row.addWidget(preview_button)
     preview_row.addWidget(confirm_preview)
     geometry_form.addRow(preview_row)
-    dialog_layout.addWidget(geometry_group)
+    content_layout.addWidget(geometry_group)
 
     scheme_group = QGroupBox("Training Scheme")
     scheme_layout = QVBoxLayout(scheme_group)
@@ -415,7 +423,7 @@ def create_training_launcher_widget(
     scheme_description.setWordWrap(True)
     scheme_layout.addWidget(scheme_combo)
     scheme_layout.addWidget(scheme_description)
-    dialog_layout.addWidget(scheme_group)
+    content_layout.addWidget(scheme_group)
 
     progress_group = QGroupBox("Training Progress")
     progress_layout = QVBoxLayout(progress_group)
@@ -431,7 +439,8 @@ def create_training_launcher_widget(
     progress_layout.addWidget(progress_bar)
     progress_layout.addWidget(preview_label)
     progress_layout.addWidget(train_button)
-    dialog_layout.addWidget(progress_group)
+    content_layout.addWidget(progress_group)
+    content_layout.addStretch(1)
 
     timer = QTimer(dialog)
     timer.setInterval(1000)

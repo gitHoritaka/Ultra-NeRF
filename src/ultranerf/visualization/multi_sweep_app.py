@@ -381,7 +381,19 @@ def launch_multi_sweep_visualization_app(
     )
     preview_sessions: list[Any] = []
 
+    def _close_preview_session(session: Any) -> None:
+        viewer_obj = getattr(session, "viewer", None)
+        window = getattr(viewer_obj, "window", None)
+        qt_window = getattr(window, "_qt_window", None)
+        if qt_window is not None:
+            try:
+                qt_window.close()
+            except Exception:
+                pass
+
     def _launch_training_preview(manifest_path: Path) -> Any:
+        while preview_sessions:
+            _close_preview_session(preview_sessions.pop())
         preview_state = prepare_multi_sweep_visualization_app(
             manifest_path=manifest_path,
             spacing_mm=state.scene_controller.spacing_mm,
