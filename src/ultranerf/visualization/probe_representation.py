@@ -19,6 +19,37 @@ class ProbeRepresentation:
     probe_face_line_mm: np.ndarray
 
 
+def _convex_scan_plane_polygon_local(
+    geometry: ProbeGeometry,
+    *,
+    arc_samples: int = 33,
+) -> np.ndarray:
+    """Return a sampled convex sector polygon in probe-local coordinates."""
+    half_angle = np.deg2rad(float(geometry.convex_angle_deg)) * 0.5
+    inner = float(geometry.convex_inner_radius_mm)
+    outer = float(geometry.convex_outer_radius_mm)
+    n = max(int(arc_samples), 3)
+    angles = np.linspace(-half_angle, half_angle, n, dtype=np.float32)
+
+    outer_arc = np.stack(
+        [
+            np.sin(angles) * outer,
+            np.cos(angles) * outer,
+            np.zeros_like(angles),
+        ],
+        axis=-1,
+    ).astype(np.float32)
+    inner_arc = np.stack(
+        [
+            np.sin(angles[::-1]) * inner,
+            np.cos(angles[::-1]) * inner,
+            np.zeros_like(angles),
+        ],
+        axis=-1,
+    ).astype(np.float32)
+    return np.concatenate([outer_arc, inner_arc], axis=0).astype(np.float32)
+
+
 def build_probe_representation(
     pose_probe_to_world: np.ndarray,
     geometry: ProbeGeometry,
@@ -28,8 +59,11 @@ def build_probe_representation(
     """Build a simple world-space representation of the probe and scan plane."""
     origin, x_axis, y_axis, z_axis = pose_to_axes(pose_probe_to_world)
     axis_length = float(axis_length_mm if axis_length_mm is not None else max(geometry.width_mm, geometry.depth_mm) * 0.25)
-    scan_plane = probe_plane_corners(pose_probe_to_world, geometry)
     if geometry.is_convex:
+        scan_plane = probe_local_to_world(
+            _convex_scan_plane_polygon_local(geometry),
+            pose_probe_to_world,
+        )
         half_angle = np.deg2rad(float(geometry.convex_angle_deg)) * 0.5
         beam_local = np.array(
             [
@@ -58,6 +92,7 @@ def build_probe_representation(
             pose_probe_to_world,
         )
     else:
+        scan_plane = probe_plane_corners(pose_probe_to_world, geometry)
         beam_line = probe_local_to_world(
             np.array(
                 [

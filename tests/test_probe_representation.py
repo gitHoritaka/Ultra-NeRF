@@ -65,6 +65,8 @@ def test_probe_representation_supports_convex_probe_geometry():
     )
     rep = build_probe_representation(np.eye(4, dtype=np.float32), geometry, axis_length_mm=10.0)
 
-    assert rep.scan_plane_corners_mm.shape == (4, 3)
+    assert rep.scan_plane_corners_mm.shape == (66, 3)
+    assert np.isclose(np.linalg.norm(rep.scan_plane_corners_mm[0, :2]), geometry.convex_outer_radius_mm, atol=1e-5)
+    assert np.isclose(np.linalg.norm(rep.scan_plane_corners_mm[-1, :2]), geometry.convex_inner_radius_mm, atol=1e-5)
     assert np.isclose(np.linalg.norm(rep.beam_line_mm[0, :2]), geometry.convex_inner_radius_mm, atol=1e-5)
     assert np.isclose(np.linalg.norm(rep.beam_line_mm[1, :2]), geometry.convex_outer_radius_mm, atol=1e-5)
