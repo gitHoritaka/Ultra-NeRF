@@ -61,6 +61,20 @@ def sanitize_training_images(images: np.ndarray, *, min_value: float = 0.0, max_
     return sanitized.astype(np.float32, copy=False)
 
 
+def rescale_training_images_to_loader_range(
+    images: np.ndarray,
+    *,
+    source_max_value: float,
+    target_max_value: float = 255.0,
+) -> np.ndarray:
+    """Rescale sanitized images into the range expected by ``load_us.py``."""
+    array = np.asarray(images, dtype=np.float32)
+    if source_max_value <= 0.0:
+        return np.zeros_like(array, dtype=np.float32)
+    scale = float(target_max_value) / float(source_max_value)
+    return (array * scale).astype(np.float32, copy=False)
+
+
 @dataclass(frozen=True)
 class DiscoveredTrainingSweep:
     """One sweep directory that looks compatible with UltraNeRF training."""
@@ -167,6 +181,7 @@ def build_training_dataset_from_sweeps(
         sanitized_nonfinite_count += int(np.size(raw_images) - np.count_nonzero(np.isfinite(raw_images)))
         clipped_value_count += int(np.count_nonzero(np.isfinite(raw_images) & ((raw_images < 0.0) | (raw_images > clip_max))))
         images = sanitize_training_images(raw_images, max_value=clip_max)
+        images = rescale_training_images_to_loader_range(images, source_max_value=clip_max)
         poses = np.load(sweep.dataset_dir / "poses.npy").astype(np.float32)
         frame_count = int(images.shape[0])
         image_chunks.append(images)
@@ -205,6 +220,8 @@ def build_training_dataset_from_sweeps(
             "clip_min": 0.0,
             "clip_max": clip_max,
             "clip_max_percentile": DEFAULT_HIGH_CLIP_PERCENTILE,
+            "rescaled_to_loader_range": True,
+            "loader_target_max": 255.0,
             "nonfinite_values_replaced": sanitized_nonfinite_count,
             "finite_values_clipped": clipped_value_count,
         },

@@ -9,6 +9,7 @@ from ultranerf.training_dataset import (
     build_training_dataset_from_sweeps,
     discover_training_sweeps,
     estimate_training_clip_max,
+    rescale_training_images_to_loader_range,
     sanitize_training_images,
 )
 
@@ -86,6 +87,14 @@ def test_sanitize_training_images_replaces_nonfinite_and_clips() -> None:
     assert sanitized[0, 0, 4] == 42.0
 
 
+def test_rescale_training_images_to_loader_range_maps_clip_ceiling_to_255() -> None:
+    images = np.asarray([[[0.0, 21.0, 42.0]]], dtype=np.float32)
+    scaled = rescale_training_images_to_loader_range(images, source_max_value=42.0)
+    assert np.isclose(float(scaled.min()), 0.0)
+    assert np.isclose(float(scaled.max()), 255.0)
+    assert np.isclose(float(scaled[0, 0, 1]), 127.5)
+
+
 def test_build_training_dataset_from_sweeps_sanitizes_invalid_values(tmp_path: Path) -> None:
     write_sweep(tmp_path / "train", 1.0)
     write_sweep(tmp_path / "val", 2.0)
@@ -107,7 +116,8 @@ def test_build_training_dataset_from_sweeps_sanitizes_invalid_values(tmp_path: P
     manifest = json.loads(Path(artifacts["manifest_path"]).read_text())
     assert np.isfinite(images).all()
     assert float(images.min()) >= 0.0
-    assert float(images.max()) <= float(manifest["sanitization"]["clip_max"])
+    assert float(images.max()) <= 255.0
     assert manifest["sanitization"]["nonfinite_values_replaced"] == 2
     assert manifest["sanitization"]["finite_values_clipped"] == 2
     assert manifest["sanitization"]["clip_max_percentile"] == 99.0
+    assert manifest["sanitization"]["rescaled_to_loader_range"] is True
