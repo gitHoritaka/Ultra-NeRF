@@ -140,6 +140,21 @@ The intended end state is:
 - T47
 - T48
 
+### Milestone 10: Declarative Training Configuration
+
+- T49
+- T50
+- T51
+
+### Milestone 11: GUI Training Workflow
+
+- T52
+- T53
+- T54
+- T55
+- T56
+- T57
+
 ## Multi-Sweep Follow-Up Tickets
 
 The tickets below extend the single-sweep viewer to support multiple tracked
@@ -256,3 +271,52 @@ Additional dependency notes:
 - T46 depends on T44 and T45.
 - T47 depends on T45 and T46.
 - T48 depends on T44 through T47.
+
+## Declarative Training Configuration Tickets
+
+These tickets cover moving NeRF training behavior out of hard-coded script
+defaults and into explicit configuration files, including how loss schemes are
+selected and composed.
+
+Recommended order:
+
+49. [T49 - Define the Training Config and Loss-Scheme Contract](T49-define-training-config-and-loss-scheme-contract.md)
+50. [T50 - Refactor Training Entry Points to Use Declarative Runtime Config](T50-refactor-training-entry-points-to-use-declarative-runtime-config.md)
+51. [T51 - Add Config-Driven Training Schemes and Regression Coverage](T51-add-config-driven-training-schemes-and-regression-coverage.md)
+
+Additional dependency notes:
+
+- T49 should happen before training UI work so the GUI targets a stable config
+  contract instead of script-specific flags.
+- T50 depends on T49.
+- T51 depends on T49 and T50.
+
+## GUI Training Workflow Tickets
+
+These tickets cover adding an in-app workflow for preparing and launching
+UltraNeRF training runs from the visualization GUI.
+
+Important implementation rule:
+
+- the GUI should orchestrate existing backend/training components rather than
+  reimplementing training logic inside widget callbacks
+- the GUI should rely on the declarative training config and training-scheme
+  work from T49 through T51
+
+Recommended order:
+
+52. [T52 - Add a GUI Training Session Launcher and Sweep Discovery Flow](T52-add-gui-training-session-launcher-and-sweep-discovery-flow.md)
+53. [T53 - Add Training and Validation Sweep Selection UI](T53-add-training-and-validation-sweep-selection-ui.md)
+54. [T54 - Add Probe Geometry and Pre-Training Visualization Confirmation](T54-add-probe-geometry-and-pre-training-visualization-confirmation.md)
+55. [T55 - Add Training-Scheme Selection and Background Training Execution](T55-add-training-scheme-selection-and-background-training-execution.md)
+56. [T56 - Add In-GUI Validation Preview and Training Progress Reporting](T56-add-in-gui-validation-preview-and-training-progress-reporting.md)
+57. [T57 - Add GUI Training QA, Failure Handling, and Documentation](T57-add-gui-training-qa-failure-handling-and-documentation.md)
+
+Additional dependency notes:
+
+- T52 depends on T49 through T51.
+- T53 depends on T52.
+- T54 depends on T52 and T53.
+- T55 depends on T51, T53, and T54.
+- T56 depends on T55.
+- T57 depends on T52 through T56.
