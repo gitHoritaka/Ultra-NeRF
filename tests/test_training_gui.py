@@ -49,3 +49,12 @@ def test_controller_builds_preview_and_training_artifacts(tmp_path: Path) -> Non
     assert artifacts.dataset_dir.exists()
     progress = controller.poll_progress()
     assert progress["event"] == "launched"
+
+
+def test_reapplying_same_geometry_does_not_clear_preview_confirmation() -> None:
+    controller = GuiTrainingSessionController(run_root=Path("/tmp/gui_training_test"))
+    geometry = ProbeGeometry(width_mm=20.0, depth_mm=30.0)
+    controller.set_probe_geometry(geometry)
+    controller.set_preview_confirmed(True)
+    controller.set_probe_geometry(ProbeGeometry(width_mm=20.0, depth_mm=30.0))
+    assert controller.preview_confirmed is True

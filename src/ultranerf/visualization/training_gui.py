@@ -106,6 +106,9 @@ class GuiTrainingSessionController:
         self.preview_confirmed = False
 
     def set_probe_geometry(self, probe_geometry: ProbeGeometry) -> None:
+        if probe_geometry == self.probe_geometry:
+            self.probe_geometry = probe_geometry
+            return
         self.probe_geometry = probe_geometry
         self.preview_confirmed = False
 
@@ -598,7 +601,6 @@ def create_training_launcher_widget(
             refresh_train_button()
 
     def train_clicked() -> None:
-        controller.set_probe_geometry(current_geometry())
         try:
             artifacts = controller.start_training()
         except Exception as exc:
