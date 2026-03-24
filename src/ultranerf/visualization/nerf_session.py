@@ -72,6 +72,57 @@ class NerfSession:
     near_m: float
     far_m: float
 
+    def _enrich_probe_geometry_override(self, probe_geometry_override: ProbeGeometry | None) -> ProbeGeometry | None:
+        if probe_geometry_override is None:
+            return None
+        if not probe_geometry_override.is_convex:
+            return probe_geometry_override
+        if probe_geometry_override.convex_n_rays is not None and probe_geometry_override.convex_n_samples is not None:
+            return probe_geometry_override
+
+        base_geometry = self.probe_geometry
+        if base_geometry is not None and base_geometry.is_convex:
+            return ProbeGeometry(
+                width_mm=float(probe_geometry_override.width_mm),
+                depth_mm=float(probe_geometry_override.depth_mm),
+                probe_type="convex",
+                convex_center_x=float(probe_geometry_override.convex_center_x if probe_geometry_override.convex_center_x is not None else base_geometry.convex_center_x),
+                convex_center_y=float(probe_geometry_override.convex_center_y if probe_geometry_override.convex_center_y is not None else base_geometry.convex_center_y),
+                convex_angle_deg=float(probe_geometry_override.convex_angle_deg if probe_geometry_override.convex_angle_deg is not None else base_geometry.convex_angle_deg),
+                convex_outer_radius_px=float(probe_geometry_override.convex_outer_radius_px if probe_geometry_override.convex_outer_radius_px is not None else base_geometry.convex_outer_radius_px),
+                convex_inner_radius_px=float(probe_geometry_override.convex_inner_radius_px if probe_geometry_override.convex_inner_radius_px is not None else base_geometry.convex_inner_radius_px),
+                convex_scale_x_mm=float(probe_geometry_override.convex_scale_x_mm if probe_geometry_override.convex_scale_x_mm is not None else base_geometry.convex_scale_x_mm),
+                convex_scale_y_mm=float(probe_geometry_override.convex_scale_y_mm if probe_geometry_override.convex_scale_y_mm is not None else base_geometry.convex_scale_y_mm),
+                convex_n_rays=int(base_geometry.convex_n_rays),
+                convex_n_samples=int(base_geometry.convex_n_samples),
+                convex_sampling_strategy=str(probe_geometry_override.convex_sampling_strategy or base_geometry.convex_sampling_strategy),
+            )
+        return probe_geometry_override
+
+    def _resolve_render_geometry(self, probe_geometry_override: ProbeGeometry | None) -> ProbeGeometry | None:
+        return self._enrich_probe_geometry_override(probe_geometry_override) or self.probe_geometry
+
+    def _resolve_render_shape(self, geometry: ProbeGeometry | None) -> tuple[int, int]:
+        if geometry is not None and geometry.is_convex:
+            return geometry.convex_render_shape
+        if self.display_image_shape is not None:
+            return (int(self.display_image_shape[0]), int(self.display_image_shape[1]))
+        return self.image_shape
+
+    def _resolve_render_spacing_and_far(self, geometry: ProbeGeometry | None, image_shape: tuple[int, int]) -> tuple[float, float, float]:
+        if geometry is not None and geometry.is_convex:
+            sw_m = float(geometry.convex_scale_x_mm) * 0.001
+            sh_m = float(geometry.convex_scale_y_mm) * 0.001
+            far_m = (float(geometry.convex_outer_radius_mm) - float(geometry.convex_inner_radius_mm)) * 0.001
+            return sw_m, sh_m, far_m
+
+        width_mm = float(geometry.width_mm) if geometry is not None else float(self.probe_width_mm)
+        depth_mm = float(geometry.depth_mm) if geometry is not None else float(self.probe_depth_mm)
+        sw_m = width_mm * 0.001 / float(image_shape[1])
+        sh_m = depth_mm * 0.001 / float(image_shape[0])
+        far_m = depth_mm * 0.001
+        return sw_m, sh_m, far_m
+
     @staticmethod
     def _resolve_runtime_probe_geometry(args: Any, fallback_geometry: ProbeGeometry | None) -> ProbeGeometry | None:
         """Resolve the probe geometry encoded in the runtime config, if available."""
@@ -137,26 +188,35 @@ class NerfSession:
 
     def render_pose(self, pose_probe_to_world_mm: np.ndarray, **render_overrides: Any) -> dict[str, Any]:
         """Render the NeRF output for an arbitrary probe pose in millimeters."""
+        probe_geometry_override = render_overrides.pop("probe_geometry_override", None)
+        render_geometry = self._resolve_render_geometry(probe_geometry_override)
+        image_shape = self._resolve_render_shape(render_geometry)
+        sw_m, sh_m, far_m = self._resolve_render_spacing_and_far(render_geometry, image_shape)
         pose_m = pose_mm_to_model_pose_m(pose_probe_to_world_mm)
         pose_tensor = self.runtime.torch.from_numpy(pose_m[:3, :4]).to(self.device).unsqueeze(0)
         kwargs = dict(self.render_kwargs)
         kwargs.update(render_overrides)
+        kwargs["probe_geometry"] = render_geometry
+        kwargs["near"] = self.near_m
+        kwargs["far"] = far_m
         rendered = self.runtime.render_us(
-            self.image_shape[0],
-            self.image_shape[1],
-            self.sw_m,
-            self.sh_m,
+            image_shape[0],
+            image_shape[1],
+            sw_m,
+            sh_m,
             c2w=pose_tensor,
             chunk=self.args.chunk,
             **kwargs,
         )
         if isinstance(rendered, dict):
             rendered.setdefault("_render_mode", getattr(self.args, "render_mode", "default"))
-        if self.probe_geometry is not None and self.probe_geometry.is_convex and self.display_image_shape is not None:
-            return self._remap_convex_render_payload(rendered)
+            if render_geometry is not None:
+                rendered.setdefault("_probe_geometry_type", render_geometry.probe_type)
+        if render_geometry is not None and render_geometry.is_convex and self.display_image_shape is not None:
+            return self._remap_convex_render_payload(rendered, render_geometry)
         return rendered
 
-    def _remap_convex_render_payload(self, rendered_output: dict[str, Any]) -> dict[str, Any]:
+    def _remap_convex_render_payload(self, rendered_output: dict[str, Any], geometry: ProbeGeometry) -> dict[str, Any]:
         remapped: dict[str, Any] = {}
         for key, value in rendered_output.items():
             if str(key).startswith("_"):
@@ -174,7 +234,7 @@ class NerfSession:
                 continue
             remapped_image = remap_convex_grid_to_image(
                 squeezed,
-                self.probe_geometry,
+                geometry,
                 self.display_image_shape,
                 method="nearest",
             )

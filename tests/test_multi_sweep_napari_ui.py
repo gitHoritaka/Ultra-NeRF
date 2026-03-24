@@ -317,3 +317,18 @@ def test_embedded_panels_receive_physical_pixel_scale() -> None:
 
     assert comparison_panel.scale_mm == (5.0, 4.0)
     assert render_panel.scale_mm == (5.0, 4.0)
+
+
+def test_probe_geometry_override_updates_effective_geometry_and_probe_layer() -> None:
+    state = make_state()
+    viewer = FakeViewer()
+    controller = MultiSweepVisualizationUIController(viewer, state)
+    controller.initialize()
+
+    override = ProbeGeometry(width_mm=40.0, depth_mm=60.0, probe_type="linear")
+    controller.set_probe_geometry_override(override)
+
+    assert controller.get_effective_probe_geometry().width_mm == 40.0
+    assert controller.get_effective_probe_geometry().depth_mm == 60.0
+    beam_line = np.asarray(viewer.layers["probe_beam_line"].data[0], dtype=np.float32)
+    assert np.allclose(beam_line[-1], np.array([0.0, 60.0, 0.0], dtype=np.float32))

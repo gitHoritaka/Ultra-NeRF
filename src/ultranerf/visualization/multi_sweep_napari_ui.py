@@ -21,6 +21,7 @@ from ultranerf.visualization.render_panel import extract_render_image, format_re
 from ultranerf.visualization.transforms import ensure_pose_matrix
 from ultranerf.visualization.ui_busy import ui_busy_feedback
 from ultranerf.visualization.volume_viewer import build_volume_layer_config_from_preset
+from ultranerf.probe_geometry import ProbeGeometry
 
 
 def _color_to_hex(color: tuple[float, float, float] | None, *, default: str) -> str:
@@ -185,7 +186,9 @@ class MultiSweepVisualizationUIController:
         self.comparison_panel: Any | None = None
         self.multi_sweep_controls: Any | None = None
         self.sweep_selection_controls: Any | None = None
+        self.probe_geometry_controls: Any | None = None
         self._scene_profile_log_path = _resolve_scene_profile_log_path(app_state.manifest_path)
+        self._probe_geometry_override: ProbeGeometry | None = None
 
     def _image_pixel_scale_mm(self, image_shape: tuple[int, int], *, sweep_id: str | None = None) -> tuple[float, float]:
         sweep = self.app_state.scene.get_sweep(sweep_id or self.app_state.scene_controller.state.active_sweep_id)
@@ -193,6 +196,16 @@ class MultiSweepVisualizationUIController:
         return (
             float(sweep.probe_geometry.depth_mm) / max(height, 1),
             float(sweep.probe_geometry.width_mm) / max(width, 1),
+        )
+
+    def _render_image_pixel_scale_mm(self, image_shape: tuple[int, int]) -> tuple[float, float]:
+        geometry = self.get_effective_probe_geometry()
+        height, width = int(image_shape[0]), int(image_shape[1])
+        if geometry.is_convex:
+            return (float(geometry.convex_scale_y_mm), float(geometry.convex_scale_x_mm))
+        return (
+            float(geometry.depth_mm) / max(height, 1),
+            float(geometry.width_mm) / max(width, 1),
         )
 
     @staticmethod
@@ -220,6 +233,13 @@ class MultiSweepVisualizationUIController:
     def attach_sweep_selection_controls(self, sweep_selection_controls: Any) -> None:
         self.sweep_selection_controls = sweep_selection_controls
 
+    def attach_probe_geometry_controls(self, probe_geometry_controls: Any) -> None:
+        self.probe_geometry_controls = probe_geometry_controls
+        self._refresh_probe_geometry_controls()
+
+    def get_effective_probe_geometry(self) -> ProbeGeometry:
+        return self._probe_geometry_override or self.app_state.probe_geometry
+
     def initialize(self, probe_pose_mm: np.ndarray | None = None) -> MultiSweepSceneState:
         if probe_pose_mm is None:
             probe_pose_mm = self.app_state.scene.active_sweep.poses_mm[0]
@@ -240,6 +260,7 @@ class MultiSweepVisualizationUIController:
             rendered_output=rendered_output,
         )
         self._refresh_probe_controls()
+        self._refresh_probe_geometry_controls()
         self._refresh_sweep_selection_controls()
         self._refresh_comparison_panel()
         self._refresh_render_panel()
@@ -294,8 +315,24 @@ class MultiSweepVisualizationUIController:
             rendered_output=self.state.rendered_output or {},
         )
         self._refresh_probe_controls()
+        self._refresh_probe_geometry_controls()
         self._refresh_sweep_selection_controls()
         self._refresh_comparison_panel()
+        return self.state
+
+    def set_probe_geometry_override(self, probe_geometry: ProbeGeometry | None) -> MultiSweepSceneState:
+        self._probe_geometry_override = probe_geometry
+        if self.render_controller is not None:
+            if probe_geometry is None:
+                self.render_controller.render_overrides.pop("probe_geometry_override", None)
+            else:
+                self.render_controller.render_overrides["probe_geometry_override"] = probe_geometry
+            self.render_controller.mark_dirty()
+        if self.state is None:
+            return self.initialize()
+        self._set_probe_layers(self.state.probe_pose_mm)
+        self._refresh_probe_geometry_controls()
+        self._refresh_render_panel()
         return self.state
 
     def set_probe_pose(self, probe_pose_mm: np.ndarray) -> MultiSweepSceneState:
@@ -553,7 +590,7 @@ class MultiSweepVisualizationUIController:
         )
 
     def _set_probe_layers(self, probe_pose_mm: np.ndarray) -> None:
-        representation = build_probe_representation(probe_pose_mm, self.app_state.probe_geometry)
+        representation = build_probe_representation(probe_pose_mm, self.get_effective_probe_geometry())
         probe_vectors = _vectors_from_axes(representation.origin_mm, representation.axes_endpoints_mm)
         layer_specs = {
             "probe_axes": (
@@ -617,7 +654,7 @@ class MultiSweepVisualizationUIController:
             render_image = extract_render_image(self.state.rendered_output)
             self.render_panel.set_render_output(
                 self.state.rendered_output,
-                scale_mm=self._image_pixel_scale_mm(render_image.shape[-2:]),
+                scale_mm=self._render_image_pixel_scale_mm(render_image.shape[-2:]),
             )
         else:
             render_image = extract_render_image(self.state.rendered_output)
@@ -625,7 +662,7 @@ class MultiSweepVisualizationUIController:
             self._set_panel_image(
                 self.render_panel,
                 render_image,
-                scale_mm=self._image_pixel_scale_mm(render_image.shape[-2:]),
+                scale_mm=self._render_image_pixel_scale_mm(render_image.shape[-2:]),
             )
 
     def _refresh_probe_controls(self) -> None:
@@ -645,6 +682,14 @@ class MultiSweepVisualizationUIController:
             pitch_deg=pitch_deg,
             roll_deg=roll_deg,
             recorded_index=recorded_index,
+        )
+
+    def _refresh_probe_geometry_controls(self) -> None:
+        if self.probe_geometry_controls is None:
+            return
+        self.probe_geometry_controls.set_probe_geometry(
+            self.get_effective_probe_geometry(),
+            is_override=self._probe_geometry_override is not None,
         )
 
     def _refresh_sweep_selection_controls(self) -> None:

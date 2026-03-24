@@ -167,3 +167,29 @@ def test_nerf_session_remaps_convex_outputs_for_display():
 
     assert call_log["render_shape"] == (7, 6)
     assert tuple(rendered["intensity_map"].shape) == (1, 1, 12, 12)
+
+
+def test_nerf_session_accepts_probe_geometry_override_for_rendering():
+    call_log = {}
+    runtime = make_runtime(call_log)
+    session = NerfSession.from_checkpoint(
+        config_path="configs/config_base_nerf.txt",
+        checkpoint_path="logs/example/001000.tar",
+        image_shape=(4, 5),
+        display_image_shape=(4, 5),
+        probe_width_mm=50.0,
+        probe_depth_mm=40.0,
+        device="cpu",
+        runtime=runtime,
+    )
+    pose_mm = np.eye(4, dtype=np.float32)
+    override = ProbeGeometry(width_mm=80.0, depth_mm=60.0, probe_type="linear")
+
+    session.render_pose(pose_mm, probe_geometry_override=override)
+
+    render_call = call_log["render_us"]
+    assert render_call["H"] == 4
+    assert render_call["W"] == 5
+    assert render_call["kwargs"]["probe_geometry"].width_mm == 80.0
+    assert render_call["kwargs"]["probe_geometry"].depth_mm == 60.0
+    assert render_call["kwargs"]["far"] == 0.06
