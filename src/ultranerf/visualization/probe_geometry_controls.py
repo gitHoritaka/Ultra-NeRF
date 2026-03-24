@@ -140,6 +140,7 @@ class ProbeGeometryControlsWidget:
 
     def _build_override_geometry(self) -> ProbeGeometry:
         current_geometry = self.ui_controller.get_effective_probe_geometry()
+        render_base_geometry = self.ui_controller.get_render_probe_geometry_base()
         probe_type = str(self.probe_type_combo.currentData())
         if probe_type == "linear":
             return ProbeGeometry(
@@ -148,7 +149,9 @@ class ProbeGeometryControlsWidget:
                 probe_type="linear",
             )
 
-        base = current_geometry if current_geometry.is_convex else self.ui_controller.app_state.probe_geometry
+        base = render_base_geometry if render_base_geometry.is_convex else (
+            current_geometry if current_geometry.is_convex else self.ui_controller.app_state.probe_geometry
+        )
         short_radius_mm = float(self.convex_short_radius_spin.value())
         long_radius_mm = float(self.convex_long_radius_spin.value())
         depth_mm = max(0.0, long_radius_mm - short_radius_mm)

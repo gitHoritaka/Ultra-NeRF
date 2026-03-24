@@ -240,6 +240,13 @@ class MultiSweepVisualizationUIController:
     def get_effective_probe_geometry(self) -> ProbeGeometry:
         return self._probe_geometry_override or self.app_state.probe_geometry
 
+    def get_render_probe_geometry_base(self) -> ProbeGeometry:
+        if self.render_controller is not None:
+            base = getattr(getattr(self.render_controller, "nerf_session", None), "probe_geometry", None)
+            if base is not None:
+                return base
+        return self.get_effective_probe_geometry()
+
     def initialize(self, probe_pose_mm: np.ndarray | None = None) -> MultiSweepSceneState:
         if probe_pose_mm is None:
             probe_pose_mm = self.app_state.scene.active_sweep.poses_mm[0]
