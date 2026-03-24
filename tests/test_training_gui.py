@@ -125,3 +125,48 @@ def test_controller_retains_latest_preview_path_across_non_preview_progress_even
     )()
     controller.poll_progress()
     assert controller.latest_preview_path() == preview_path.resolve()
+
+
+def test_controller_can_open_completed_result_visualization(tmp_path: Path) -> None:
+    launched = {}
+
+    def result_launcher(manifest_path: Path, checkpoint_path: Path, config_path: Path):
+        launched["manifest_path"] = manifest_path
+        launched["checkpoint_path"] = checkpoint_path
+        launched["config_path"] = config_path
+        return "session"
+
+    controller = GuiTrainingSessionController(
+        result_launcher=result_launcher,
+        run_root=tmp_path / "runs",
+    )
+    run_dir = tmp_path / "runs" / "gui_train_fake"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = run_dir / "preview_manifest.json"
+    checkpoint_path = run_dir / "000100.tar"
+    config_path = run_dir / "generated_training_config.txt"
+    stdout_log_path = run_dir / "stdout.log"
+    progress_path = run_dir / "progress.jsonl"
+    manifest_path.write_text("{}")
+    checkpoint_path.write_text("checkpoint")
+    config_path.write_text("config")
+    stdout_log_path.write_text("")
+    progress_path.write_text('{"event":"completed","step":100,"total_steps":100}\n')
+
+    controller.training_run = type(
+        "FakeArtifacts",
+        (),
+        {
+            "run_dir": run_dir,
+            "stdout_log_path": stdout_log_path,
+            "config_path": config_path,
+            "preview_manifest_path": manifest_path,
+            "process": type("FakeProcess", (), {"poll": lambda self: 0})(),
+        },
+    )()
+    assert controller.can_open_result_visualization() is True
+    session = controller.open_result_visualization()
+    assert session == "session"
+    assert launched["manifest_path"] == manifest_path
+    assert launched["checkpoint_path"] == checkpoint_path
+    assert launched["config_path"] == config_path

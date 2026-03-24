@@ -411,6 +411,34 @@ def launch_multi_sweep_visualization_app(
         preview_sessions.append(session)
         return session
 
+    def _launch_training_result_visualization(
+        manifest_path: Path,
+        checkpoint_path: Path,
+        config_path: Path,
+    ) -> Any:
+        preview_state = prepare_multi_sweep_visualization_app(
+            manifest_path=manifest_path,
+            spacing_mm=state.scene_controller.spacing_mm,
+            pixel_stride=state.scene_controller.pixel_stride,
+            preset_name=state.preset_name,
+            cache_root=state.cache_root,
+            fusion_device=state.fusion_device,
+            reduction_mode=state.reduction_mode,
+        )
+        nerf_config = NerfLaunchConfig(
+            checkpoint_path=checkpoint_path,
+            config_path=config_path,
+            trigger_mode="manual",
+            render_image_shape=resolve_multi_sweep_render_image_shape(preview_state.scene),
+        )
+        session = launch_multi_sweep_visualization_app(
+            preview_state,
+            initial_pose_index=0,
+            nerf_config=nerf_config,
+        )
+        preview_sessions.append(session)
+        return session
+
     if hasattr(viewer, "window"):
         use_multi_view_workspace = _can_build_multi_view_workspace(viewer)
 
@@ -433,7 +461,10 @@ def launch_multi_sweep_visualization_app(
         ui_controller.attach_probe_controls(probe_controls)
         probe_geometry_controls = create_probe_geometry_controls(ui_controller)
         ui_controller.attach_probe_geometry_controls(probe_geometry_controls)
-        training_widget = create_training_launcher_widget(preview_launcher=_launch_training_preview)
+        training_widget = create_training_launcher_widget(
+            preview_launcher=_launch_training_preview,
+            result_launcher=_launch_training_result_visualization,
+        )
 
         if use_multi_view_workspace:
             from ultranerf.visualization.embedded_napari_panels import (

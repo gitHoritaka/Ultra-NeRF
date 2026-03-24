@@ -30,6 +30,7 @@ from ultranerf.training_dataset import (
 
 ProcessFactory = Callable[..., subprocess.Popen]
 PreviewLauncher = Callable[[Path], Any]
+ResultLauncher = Callable[[Path, Path, Path], Any]
 
 
 def _default_process_factory(*args: Any, **kwargs: Any) -> subprocess.Popen:
@@ -65,11 +66,13 @@ class GuiTrainingSessionController:
         self,
         *,
         preview_launcher: PreviewLauncher | None = None,
+        result_launcher: ResultLauncher | None = None,
         process_factory: ProcessFactory | None = None,
         run_root: str | Path | None = None,
         scheme_root: str | Path | None = None,
     ) -> None:
         self.preview_launcher = preview_launcher
+        self.result_launcher = result_launcher
         self.process_factory = process_factory or _default_process_factory
         self.run_root = _default_run_root() if run_root is None else Path(run_root)
         self.scheme_root = DEFAULT_TRAINING_SCHEME_DIR if scheme_root is None else Path(scheme_root)
@@ -268,6 +271,46 @@ class GuiTrainingSessionController:
         self.poll_progress()
         return self._latest_preview_path
 
+    def latest_checkpoint_path(self) -> Path | None:
+        if self.training_run is None:
+            return None
+        checkpoints = sorted(self.training_run.run_dir.glob("*.tar"))
+        if not checkpoints:
+            return None
+        return checkpoints[-1]
+
+    def can_open_result_visualization(self) -> bool:
+        progress = self.poll_progress()
+        if self.result_launcher is None:
+            return False
+        if bool(progress.get("is_running", False)):
+            return False
+        if int(progress.get("exit_code", -1)) != 0:
+            return False
+        if self.training_run is None:
+            return False
+        checkpoint_path = self.latest_checkpoint_path()
+        return (
+            checkpoint_path is not None
+            and checkpoint_path.exists()
+            and self.training_run.config_path.exists()
+            and self.training_run.preview_manifest_path.exists()
+        )
+
+    def open_result_visualization(self) -> Any:
+        if not self.can_open_result_visualization():
+            raise RuntimeError("Completed training artifacts are not ready for visualization")
+        if self.result_launcher is None:
+            raise RuntimeError("No visualization launcher is configured")
+        checkpoint_path = self.latest_checkpoint_path()
+        if checkpoint_path is None:
+            raise RuntimeError("No checkpoint was produced by the training run")
+        return self.result_launcher(
+            self.training_run.preview_manifest_path,
+            checkpoint_path,
+            self.training_run.config_path,
+        )
+
 
 class _FallbackTrainingLauncherWidget:
     """Headless placeholder used in tests without Qt."""
@@ -280,6 +323,7 @@ class _FallbackTrainingLauncherWidget:
 def create_training_launcher_widget(
     *,
     preview_launcher: PreviewLauncher | None = None,
+    result_launcher: ResultLauncher | None = None,
     process_factory: ProcessFactory | None = None,
     run_root: str | Path | None = None,
 ) -> Any:
@@ -313,6 +357,7 @@ def create_training_launcher_widget(
         return _FallbackTrainingLauncherWidget(
             GuiTrainingSessionController(
                 preview_launcher=preview_launcher,
+                result_launcher=result_launcher,
                 process_factory=process_factory,
                 run_root=run_root,
             )
@@ -322,6 +367,7 @@ def create_training_launcher_widget(
         return _FallbackTrainingLauncherWidget(
             GuiTrainingSessionController(
                 preview_launcher=preview_launcher,
+                result_launcher=result_launcher,
                 process_factory=process_factory,
                 run_root=run_root,
             )
@@ -332,6 +378,7 @@ def create_training_launcher_widget(
 
     controller = GuiTrainingSessionController(
         preview_launcher=preview_launcher,
+        result_launcher=result_launcher,
         process_factory=process_factory,
         run_root=run_root,
     )
@@ -463,11 +510,14 @@ def create_training_launcher_widget(
     preview_scroll.setWidget(preview_image_label)
     train_button = QPushButton("Train")
     train_button.setEnabled(False)
+    open_result_button = QPushButton("Open Result in Viewer")
+    open_result_button.setEnabled(False)
     progress_layout.addWidget(status_label)
     progress_layout.addWidget(progress_bar)
     progress_layout.addWidget(preview_status_label)
     progress_layout.addWidget(preview_scroll)
     progress_layout.addWidget(train_button)
+    progress_layout.addWidget(open_result_button)
     content_layout.addWidget(progress_group)
     content_layout.addStretch(1)
 
@@ -498,6 +548,7 @@ def create_training_launcher_widget(
 
     def refresh_train_button() -> None:
         train_button.setEnabled(controller.can_start_training())
+        open_result_button.setEnabled(controller.can_open_result_visualization())
 
     def sync_selection_from_list() -> None:
         selected_training: list[str] = []
@@ -647,6 +698,13 @@ def create_training_launcher_widget(
         timer.start()
         refresh_train_button()
 
+    def open_result_clicked() -> None:
+        try:
+            controller.open_result_visualization()
+        except Exception as exc:
+            QMessageBox.critical(dialog, "Open result failed", str(exc))
+            return
+
     def open_dialog() -> None:
         refresh_schemes()
         refresh_train_button()
@@ -664,6 +722,7 @@ def create_training_launcher_widget(
     preview_button.clicked.connect(preview_clicked)
     confirm_preview.stateChanged.connect(lambda _state: confirm_changed())
     train_button.clicked.connect(train_clicked)
+    open_result_button.clicked.connect(open_result_clicked)
     timer.timeout.connect(update_progress_ui)
     open_button.clicked.connect(open_dialog)
     refresh_schemes()
