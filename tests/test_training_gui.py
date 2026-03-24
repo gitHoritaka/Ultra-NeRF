@@ -47,6 +47,8 @@ def test_controller_builds_preview_and_training_artifacts(tmp_path: Path) -> Non
     assert artifacts.config_path.exists()
     assert artifacts.split_path.exists()
     assert artifacts.dataset_dir.exists()
+    config_text = artifacts.config_path.read_text()
+    assert "N_samples = 4" in config_text
     progress = controller.poll_progress()
     assert progress["event"] == "launched"
 
@@ -58,3 +60,36 @@ def test_reapplying_same_geometry_does_not_clear_preview_confirmation() -> None:
     controller.set_preview_confirmed(True)
     controller.set_probe_geometry(ProbeGeometry(width_mm=20.0, depth_mm=30.0))
     assert controller.preview_confirmed is True
+
+
+def test_convex_training_config_uses_convex_sample_count(tmp_path: Path) -> None:
+    write_sweep(tmp_path / "sweep_a", 1.0)
+    controller = GuiTrainingSessionController(
+        process_factory=lambda *args, **kwargs: FakeProcess(),
+        run_root=tmp_path / "runs",
+    )
+    controller.discover_from_root(tmp_path)
+    controller.set_selected_training_ids(("sweep_a",))
+    controller.set_selected_validation_ids(("sweep_a",))
+    controller.set_probe_geometry(
+        ProbeGeometry(
+            width_mm=80.0,
+            depth_mm=140.0,
+            probe_type="convex",
+            convex_center_x=100.0,
+            convex_center_y=0.0,
+            convex_angle_deg=70.0,
+            convex_outer_radius_px=600.0,
+            convex_inner_radius_px=100.0,
+            convex_scale_x_mm=0.3,
+            convex_scale_y_mm=0.3,
+            convex_n_rays=250,
+            convex_n_samples=384,
+        )
+    )
+    controller.set_selected_scheme_path(Path("/workspace/configs/training_schemes/l2_baseline.json"))
+    controller.launch_preview()
+    controller.set_preview_confirmed(True)
+    artifacts = controller.start_training()
+    config_text = artifacts.config_path.read_text()
+    assert "N_samples = 384" in config_text

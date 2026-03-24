@@ -155,6 +155,13 @@ class GuiTrainingSessionController:
         scheme_path = self.selected_scheme_path
         if scheme_path is None:
             raise RuntimeError("No training scheme has been selected")
+        image_shape = None
+        if self.discovered_sweeps:
+            selected_ids = set(self.selected_training_ids + self.selected_validation_ids)
+            for sweep in self.discovered_sweeps:
+                if sweep.sweep_id in selected_ids:
+                    image_shape = sweep.image_shape
+                    break
         values: dict[str, Any] = {
             "expname": run_id,
             "basedir": str(self.run_root.resolve()),
@@ -167,6 +174,8 @@ class GuiTrainingSessionController:
             "probe_depth": float(self.probe_geometry.depth_mm),
             "tensorboard": False,
         }
+        if image_shape is not None and not self.probe_geometry.is_convex:
+            values["N_samples"] = int(image_shape[0])
         if self.probe_geometry.is_convex:
             values.update(
                 {
@@ -179,6 +188,7 @@ class GuiTrainingSessionController:
                     "convex_scale_y_mm": float(self.probe_geometry.convex_scale_y_mm),
                     "convex_n_rays": int(self.probe_geometry.convex_n_rays),
                     "convex_n_samples": int(self.probe_geometry.convex_n_samples),
+                    "N_samples": int(self.probe_geometry.convex_n_samples),
                 }
             )
         return values
