@@ -3,7 +3,10 @@ from pathlib import Path
 import numpy as np
 
 from ultranerf.probe_geometry import ProbeGeometry
-from ultranerf.visualization.training_gui import GuiTrainingSessionController
+from ultranerf.visualization.training_gui import (
+    GuiTrainingSessionController,
+    validation_preview_display_size_px,
+)
 
 
 def write_sweep(path: Path, value: float) -> None:
@@ -170,3 +173,24 @@ def test_controller_can_open_completed_result_visualization(tmp_path: Path) -> N
     assert launched["manifest_path"] == manifest_path
     assert launched["checkpoint_path"] == checkpoint_path
     assert launched["config_path"] == config_path
+
+
+def test_validation_preview_display_size_uses_physical_scale() -> None:
+    linear = ProbeGeometry(width_mm=80.0, depth_mm=140.0)
+    assert validation_preview_display_size_px(linear) == (412, 350)
+
+    convex = ProbeGeometry(
+        width_mm=125.0,
+        depth_mm=160.0,
+        probe_type="convex",
+        convex_center_x=100.0,
+        convex_center_y=0.0,
+        convex_angle_deg=70.0,
+        convex_outer_radius_px=600.0,
+        convex_inner_radius_px=100.0,
+        convex_scale_x_mm=0.3,
+        convex_scale_y_mm=0.3,
+        convex_n_rays=250,
+        convex_n_samples=384,
+    )
+    assert validation_preview_display_size_px(convex) == (636, 400)

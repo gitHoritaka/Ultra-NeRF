@@ -31,6 +31,8 @@ from ultranerf.training_dataset import (
 ProcessFactory = Callable[..., subprocess.Popen]
 PreviewLauncher = Callable[[Path], Any]
 ResultLauncher = Callable[[Path, Path, Path], Any]
+VALIDATION_PREVIEW_MM_PER_PX = 0.4
+VALIDATION_PREVIEW_SEPARATOR_PX = 12
 
 
 def _default_process_factory(*args: Any, **kwargs: Any) -> subprocess.Popen:
@@ -43,6 +45,24 @@ def _default_run_root() -> Path:
 
 def _session_timestamp() -> str:
     return f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}_{int((time.time() % 1.0) * 1000):03d}"
+
+
+def validation_preview_display_size_px(
+    probe_geometry: ProbeGeometry,
+    *,
+    mm_per_px: float = VALIDATION_PREVIEW_MM_PER_PX,
+    separator_px: int = VALIDATION_PREVIEW_SEPARATOR_PX,
+) -> tuple[int, int]:
+    """Return the target side-by-side preview display size in pixels.
+
+    The preview shows target and render images side by side, so the total width
+    is twice the physical image width plus a small separator.
+    """
+    if mm_per_px <= 0:
+        raise ValueError("mm_per_px must be strictly positive")
+    single_width = max(1, int(round(float(probe_geometry.width_mm) / mm_per_px)))
+    height = max(1, int(round(float(probe_geometry.depth_mm) / mm_per_px)))
+    return (single_width * 2) + int(separator_px), height
 
 
 @dataclass
@@ -499,7 +519,9 @@ def create_training_launcher_widget(
     status_label = QLabel("Ready")
     progress_bar = QProgressBar()
     progress_bar.setRange(0, 100)
-    preview_status_label = QLabel("No validation preview available.")
+    preview_status_label = QLabel(
+        f"No validation preview available. Display scale: {VALIDATION_PREVIEW_MM_PER_PX:.1f} mm/px"
+    )
     preview_status_label.setWordWrap(True)
     preview_scroll = QScrollArea()
     preview_scroll.setWidgetResizable(True)
@@ -670,14 +692,22 @@ def create_training_launcher_widget(
             height, width = preview_image.shape
             qimage = QImage(preview_image.data, width, height, width, QImage.Format_Grayscale8)
             pixmap = QPixmap.fromImage(qimage)
-            scaled = pixmap.scaledToHeight(420, Qt.SmoothTransformation)
+            target_width, target_height = validation_preview_display_size_px(controller.probe_geometry)
+            scaled = pixmap.scaled(
+                target_width,
+                target_height,
+                Qt.IgnoreAspectRatio,
+                Qt.SmoothTransformation,
+            )
             preview_image_label.setPixmap(scaled)
             preview_image_label.resize(scaled.size())
         elif latest_preview_path is not None:
             preview_status_label.setText(f"Validation preview: {latest_preview_path}")
             preview_image_label.clear()
         else:
-            preview_status_label.setText("No validation preview available.")
+            preview_status_label.setText(
+                f"No validation preview available. Display scale: {VALIDATION_PREVIEW_MM_PER_PX:.1f} mm/px"
+            )
             preview_image_label.clear()
         if progress.get("exit_code") is not None and not bool(progress.get("is_running", False)):
             timer.stop()
