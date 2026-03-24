@@ -734,6 +734,8 @@ def create_training_launcher_widget(
         except Exception as exc:
             QMessageBox.critical(dialog, "Open result failed", str(exc))
             return
+        timer.stop()
+        dialog.close()
 
     def open_dialog() -> None:
         refresh_schemes()
