@@ -78,7 +78,7 @@ class NerfSession:
         if not probe_geometry_override.is_convex:
             return probe_geometry_override
         if probe_geometry_override.convex_n_rays is not None and probe_geometry_override.convex_n_samples is not None:
-            return probe_geometry_override
+            return self._rescale_convex_override_resolution(probe_geometry_override)
 
         base_geometry = self.probe_geometry
         if base_geometry is not None and base_geometry.is_convex:
@@ -97,7 +97,45 @@ class NerfSession:
                 convex_n_samples=int(base_geometry.convex_n_samples),
                 convex_sampling_strategy=str(probe_geometry_override.convex_sampling_strategy or base_geometry.convex_sampling_strategy),
             )
-        return probe_geometry_override
+        return self._rescale_convex_override_resolution(probe_geometry_override)
+
+    def _rescale_convex_override_resolution(self, geometry: ProbeGeometry) -> ProbeGeometry:
+        base_geometry = self.probe_geometry
+        if base_geometry is None or not base_geometry.is_convex or not geometry.is_convex:
+            return geometry
+        if (
+            int(geometry.convex_n_rays) != int(base_geometry.convex_n_rays)
+            or int(geometry.convex_n_samples) != int(base_geometry.convex_n_samples)
+        ):
+            return geometry
+
+        base_depth_mm = float(base_geometry.convex_outer_radius_mm - base_geometry.convex_inner_radius_mm)
+        override_depth_mm = float(geometry.convex_outer_radius_mm - geometry.convex_inner_radius_mm)
+        if base_depth_mm <= 0.0 or override_depth_mm <= 0.0 or float(base_geometry.convex_angle_deg) <= 0.0:
+            return geometry
+
+        angle_ratio = float(geometry.convex_angle_deg) / float(base_geometry.convex_angle_deg)
+        depth_ratio = override_depth_mm / base_depth_mm
+        if np.isclose(angle_ratio, 1.0, atol=1e-3) and np.isclose(depth_ratio, 1.0, atol=1e-3):
+            return geometry
+
+        scaled_n_rays = max(8, int(round(float(base_geometry.convex_n_rays) * angle_ratio)))
+        scaled_n_samples = max(8, int(round(float(base_geometry.convex_n_samples) * depth_ratio)))
+        return ProbeGeometry(
+            width_mm=float(geometry.width_mm),
+            depth_mm=float(geometry.depth_mm),
+            probe_type="convex",
+            convex_center_x=float(geometry.convex_center_x),
+            convex_center_y=float(geometry.convex_center_y),
+            convex_angle_deg=float(geometry.convex_angle_deg),
+            convex_outer_radius_px=float(geometry.convex_outer_radius_px),
+            convex_inner_radius_px=float(geometry.convex_inner_radius_px),
+            convex_scale_x_mm=float(geometry.convex_scale_x_mm),
+            convex_scale_y_mm=float(geometry.convex_scale_y_mm),
+            convex_n_rays=scaled_n_rays,
+            convex_n_samples=scaled_n_samples,
+            convex_sampling_strategy=str(geometry.convex_sampling_strategy),
+        )
 
     def _resolve_render_geometry(self, probe_geometry_override: ProbeGeometry | None) -> ProbeGeometry | None:
         return self._enrich_probe_geometry_override(probe_geometry_override) or self.probe_geometry
@@ -236,7 +274,7 @@ class NerfSession:
                 squeezed,
                 geometry,
                 self.display_image_shape,
-                method="nearest",
+                method="bilinear",
             )
             tensor = self.runtime.torch.from_numpy(remapped_image).to(self.device).unsqueeze(0).unsqueeze(0)
             remapped[key] = tensor

@@ -193,3 +193,62 @@ def test_nerf_session_accepts_probe_geometry_override_for_rendering():
     assert render_call["kwargs"]["probe_geometry"].width_mm == 80.0
     assert render_call["kwargs"]["probe_geometry"].depth_mm == 60.0
     assert render_call["kwargs"]["far"] == 0.06
+
+
+def test_nerf_session_scales_convex_override_render_shape_with_geometry():
+    call_log = {}
+
+    def render_us(H, W, sw, sh, c2w=None, chunk=None, **kwargs):
+        call_log["render_shape"] = (H, W)
+        return {"intensity_map": torch.ones((1, 1, H, W), dtype=torch.float32)}
+
+    runtime = NerfRuntime(
+        torch=torch,
+        config_parser=lambda: FakeConvexParser(),
+        create_nerf=make_runtime(call_log).create_nerf,
+        render_us=render_us,
+    )
+    base_geometry = ProbeGeometry(
+        width_mm=125.0,
+        depth_mm=160.0,
+        probe_type="convex",
+        convex_center_x=50.0,
+        convex_center_y=10.0,
+        convex_angle_deg=35.0,
+        convex_outer_radius_px=100.0,
+        convex_inner_radius_px=20.0,
+        convex_scale_x_mm=0.4,
+        convex_scale_y_mm=0.4,
+        convex_n_rays=6,
+        convex_n_samples=7,
+    )
+
+    session = NerfSession.from_checkpoint(
+        config_path="configs/config_base_nerf.txt",
+        checkpoint_path="logs/example/001000.tar",
+        image_shape=(14, 12),
+        display_image_shape=(12, 12),
+        probe_geometry=base_geometry,
+        probe_width_mm=base_geometry.width_mm,
+        probe_depth_mm=base_geometry.depth_mm,
+        device="cpu",
+        runtime=runtime,
+    )
+    override = ProbeGeometry(
+        width_mm=200.0,
+        depth_mm=240.0,
+        probe_type="convex",
+        convex_center_x=50.0,
+        convex_center_y=10.0,
+        convex_angle_deg=70.0,
+        convex_outer_radius_px=140.0,
+        convex_inner_radius_px=20.0,
+        convex_scale_x_mm=0.4,
+        convex_scale_y_mm=0.4,
+        convex_n_rays=6,
+        convex_n_samples=7,
+    )
+
+    session.render_pose(np.eye(4, dtype=np.float32), probe_geometry_override=override)
+
+    assert call_log["render_shape"] == (10, 12)
