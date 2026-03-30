@@ -113,7 +113,12 @@ def get_rays_us_convex(
     geometry: ProbeGeometry,
     c2w: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Generate convex fan rays in world coordinates."""
+    """Generate convex fan rays in world coordinates.
+
+    Convex probe poses are interpreted at the midpoint of the inner arc. The
+    center ray therefore starts at the pose translation, while off-axis rays
+    start on the corresponding inner-arc points around that midpoint.
+    """
     if not geometry.is_convex:
         raise ValueError("get_rays_us_convex requires a convex probe geometry")
     t = c2w[:3, -1]
@@ -124,9 +129,9 @@ def get_rays_us_convex(
         [torch.sin(angles), torch.cos(angles), torch.zeros_like(angles)],
         dim=-1,
     )
-    origins_base = dirs_base.clone()
-    origins_base[:, 0] *= float(geometry.convex_inner_radius_mm) * 0.001
-    origins_base[:, 1] *= float(geometry.convex_inner_radius_mm) * 0.001
+    inner_radius_m = float(geometry.convex_inner_radius_mm) * 0.001
+    origins_base = dirs_base.clone() * inner_radius_m
+    origins_base[:, 1] -= inner_radius_m
 
     rays_o = (R @ origins_base.transpose(0, 1)).transpose(0, 1) + t
     rays_d = (R @ dirs_base.transpose(0, 1)).transpose(0, 1)

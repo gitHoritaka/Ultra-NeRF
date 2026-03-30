@@ -53,14 +53,12 @@ def pose_mm_to_model_pose_m(
 ) -> np.ndarray:
     """Convert a visualization-space pose in millimeters into model-space meters.
 
-    For convex probes, the GUI pose is interpreted at the midpoint of the inner
-    arc. The training/runtime renderer expects the pose origin at the fan
-    center, so the pose must be shifted backward along the local +Y axis by the
-    inner radius before converting millimeters to meters.
+    Convex and linear poses both use the same public convention here: the pose
+    translation is the displayed imaging origin. For convex probes, the runtime
+    now consumes that inner-arc midpoint convention directly, so only the
+    millimeter-to-meter conversion is applied.
     """
     pose_mm = ensure_pose_matrix(pose_probe_to_world_mm).astype(np.float32).copy()
-    if probe_geometry is not None and probe_geometry.is_convex:
-        pose_mm[:3, 3] -= pose_mm[:3, 1] * float(probe_geometry.convex_inner_radius_mm)
     pose_mm[:3, 3] *= 0.001
     return pose_mm
 

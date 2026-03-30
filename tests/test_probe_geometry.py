@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
 import numpy as np
+import torch
 
+from ultranerf.nerf_utils import get_rays_us_convex
 from ultranerf.probe_geometry import (
     ProbeGeometry,
     build_probe_geometry_from_args,
@@ -63,6 +65,18 @@ def test_convex_ray_grid_uses_inner_arc_origins():
     assert directions.shape == (5, 3)
     assert np.allclose(np.linalg.norm(directions[:, :2], axis=1), np.ones(5), atol=1e-6)
     assert np.allclose(np.linalg.norm(origins[:, :2], axis=1), np.full(5, geometry.convex_inner_radius_mm), atol=1e-6)
+
+
+def test_get_rays_us_convex_uses_inner_arc_midpoint_pose_origin():
+    geometry = make_convex_geometry()
+    c2w = torch.eye(4, dtype=torch.float32)
+    c2w[:3, 3] = torch.tensor([0.01, 0.02, 0.03], dtype=torch.float32)
+
+    rays_o, rays_d = get_rays_us_convex(geometry, c2w)
+
+    center_idx = geometry.convex_n_rays // 2
+    assert torch.allclose(rays_o[center_idx], c2w[:3, 3], atol=1e-6)
+    assert torch.allclose(rays_d[center_idx], torch.tensor([0.0, 1.0, 0.0]), atol=1e-6)
 
 
 def test_convex_sampling_points_cover_expected_grid_shape():

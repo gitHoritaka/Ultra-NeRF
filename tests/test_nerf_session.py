@@ -75,7 +75,7 @@ def test_pose_mm_to_model_pose_m_scales_translation_only():
     assert np.allclose(pose_m[:3, 3], np.array([0.01, 0.02, 0.03], dtype=np.float32))
 
 
-def test_pose_mm_to_model_pose_m_shifts_convex_pose_from_inner_arc_to_fan_center():
+def test_pose_mm_to_model_pose_m_preserves_convex_inner_arc_midpoint_translation():
     pose_mm = np.eye(4, dtype=np.float32)
     pose_mm[:3, 3] = np.array([10.0, 20.0, 30.0], dtype=np.float32)
     geometry = ProbeGeometry(
@@ -95,7 +95,7 @@ def test_pose_mm_to_model_pose_m_shifts_convex_pose_from_inner_arc_to_fan_center
 
     pose_m = pose_mm_to_model_pose_m(pose_mm, probe_geometry=geometry)
 
-    expected_translation_mm = np.array([10.0, 20.0 - geometry.convex_inner_radius_mm, 30.0], dtype=np.float32)
+    expected_translation_mm = np.array([10.0, 20.0, 30.0], dtype=np.float32)
     assert np.allclose(pose_m[:3, 3], expected_translation_mm * 0.001)
 
 
@@ -193,7 +193,7 @@ def test_nerf_session_remaps_convex_outputs_for_display():
     assert tuple(rendered["intensity_map"].shape) == (1, 1, 12, 12)
 
 
-def test_nerf_session_render_pose_shifts_convex_pose_before_runtime_call():
+def test_nerf_session_render_pose_preserves_convex_pose_before_runtime_call():
     call_log = {}
 
     def render_us(H, W, sw, sh, c2w=None, chunk=None, **kwargs):
@@ -236,7 +236,7 @@ def test_nerf_session_render_pose_shifts_convex_pose_before_runtime_call():
 
     session.render_pose(pose_mm)
 
-    expected_y_m = (50.0 - geometry.convex_inner_radius_mm) * 0.001
+    expected_y_m = 50.0 * 0.001
     assert np.isclose(float(call_log["c2w"][0, 1, 3]), expected_y_m)
 
 
