@@ -59,7 +59,9 @@ def build_probe_representation(
     """Build a simple world-space representation of the probe and scan plane."""
     origin, x_axis, y_axis, z_axis = pose_to_axes(pose_probe_to_world)
     axis_length = float(axis_length_mm if axis_length_mm is not None else max(geometry.width_mm, geometry.depth_mm) * 0.25)
+    display_origin = origin.copy()
     if geometry.is_convex:
+        display_origin = origin + y_axis * float(geometry.convex_inner_radius_mm)
         scan_plane = probe_local_to_world(
             _convex_scan_plane_polygon_local(geometry),
             pose_probe_to_world,
@@ -114,12 +116,12 @@ def build_probe_representation(
             pose_probe_to_world,
         )
     axes_endpoints = {
-        "x": origin + x_axis * axis_length,
-        "y": origin + y_axis * axis_length,
-        "z": origin + z_axis * axis_length,
+        "x": display_origin + x_axis * axis_length,
+        "y": display_origin + y_axis * axis_length,
+        "z": display_origin + z_axis * axis_length,
     }
     return ProbeRepresentation(
-        origin_mm=origin.astype(np.float32),
+        origin_mm=display_origin.astype(np.float32),
         axes_endpoints_mm={k: v.astype(np.float32) for k, v in axes_endpoints.items()},
         scan_plane_corners_mm=scan_plane.astype(np.float32),
         beam_line_mm=beam_line.astype(np.float32),
