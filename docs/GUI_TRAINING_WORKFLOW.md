@@ -8,6 +8,10 @@ Launch it with:
 python run_training_gui.py
 ```
 
+For short linear/convex recipes and the matching viewer commands, see:
+
+- [`TRAINING_AND_VIEWER_RECIPES.md`](TRAINING_AND_VIEWER_RECIPES.md)
+
 The intended workflow is:
 
 1. Launch `run_training_gui.py`.

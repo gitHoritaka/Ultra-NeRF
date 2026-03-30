@@ -16,6 +16,11 @@ Example:
 python run_ultranerf.py --config configs/config_base_nerf.txt
 ```
 
+For explicit end-to-end examples, including how to open the trained result in
+the viewer afterward, see:
+
+- [`TRAINING_AND_VIEWER_RECIPES.md`](TRAINING_AND_VIEWER_RECIPES.md)
+
 ## Config Structure
 
 Training uses:

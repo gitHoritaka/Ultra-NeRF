@@ -32,6 +32,7 @@ now lives under `src/ultranerf/`.
 Start here:
 
 - repository layout: [`docs/REPO_LAYOUT.md`](docs/REPO_LAYOUT.md)
+- training + viewer recipes: [`docs/TRAINING_AND_VIEWER_RECIPES.md`](docs/TRAINING_AND_VIEWER_RECIPES.md)
 - CLI training: [`docs/TRAINING_CLI.md`](docs/TRAINING_CLI.md)
 - training config and schemes: [`docs/TRAINING_CONFIG.md`](docs/TRAINING_CONFIG.md)
 - GUI training workflow: [`docs/GUI_TRAINING_WORKFLOW.md`](docs/GUI_TRAINING_WORKFLOW.md)
@@ -92,6 +93,7 @@ There are now two recommended training entry points:
 
 Use these docs instead of the README for the actual workflow details:
 
+- common training/viewer recipes: [`docs/TRAINING_AND_VIEWER_RECIPES.md`](docs/TRAINING_AND_VIEWER_RECIPES.md)
 - CLI training: [`docs/TRAINING_CLI.md`](docs/TRAINING_CLI.md)
 - training config and schemes: [`docs/TRAINING_CONFIG.md`](docs/TRAINING_CONFIG.md)
 - GUI training: [`docs/GUI_TRAINING_WORKFLOW.md`](docs/GUI_TRAINING_WORKFLOW.md)
