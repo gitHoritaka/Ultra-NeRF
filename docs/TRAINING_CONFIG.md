@@ -5,6 +5,9 @@ UltraNeRF training is now driven by two layers:
 - a flat `configargparse` config passed to `run_ultranerf.py`
 - an optional JSON `training_scheme` referenced from that config
 
+For a practical terminal workflow, see [`TRAINING_CLI.md`](TRAINING_CLI.md).
+For the standalone GUI workflow, see [`GUI_TRAINING_WORKFLOW.md`](GUI_TRAINING_WORKFLOW.md).
+
 The flat config still carries dataset and probe/runtime details such as:
 
 - `datadir`
@@ -53,6 +56,12 @@ Validation preview support:
 then the training loop writes:
 
 - `progress.jsonl`
-- `validation_preview/latest.png`
+- `validation_preview/latest.gif`
 
 for GUI monitoring.
+
+GUI dataset preparation note:
+
+- the GUI training path sanitizes non-finite values
+- clips large outliers with a sampled per-dataset percentile cap
+- rescales prepared images into the `0..255` range expected by `load_us.py`

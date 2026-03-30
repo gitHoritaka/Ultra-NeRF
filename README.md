@@ -32,6 +32,7 @@ now lives under `src/ultranerf/`.
 Start here:
 
 - repository layout: [`docs/REPO_LAYOUT.md`](docs/REPO_LAYOUT.md)
+- CLI training: [`docs/TRAINING_CLI.md`](docs/TRAINING_CLI.md)
 - training config and schemes: [`docs/TRAINING_CONFIG.md`](docs/TRAINING_CONFIG.md)
 - GUI training workflow: [`docs/GUI_TRAINING_WORKFLOW.md`](docs/GUI_TRAINING_WORKFLOW.md)
 - convex support: [`docs/CONVEX_SUPPORT.md`](docs/CONVEX_SUPPORT.md)
@@ -71,15 +72,6 @@ The current workspace supports:
 - NeRF rendering from the current probe pose
 - dropdown switching between the final render and intermediate acoustic maps
 
-The multi-sweep GUI also includes a training launcher:
-
-- discover compatible sweep folders
-- choose training and validation sweeps
-- enter probe geometry
-- open a preview window to confirm geometry placement
-- select a JSON training scheme
-- launch `run_ultranerf.py` in the background and monitor validation previews
-
 Convex note:
 
 - baseline convex probe support is available through `probe_type=convex`
@@ -88,6 +80,21 @@ Convex note:
 
 For the UI layout, controls, and review workflow, use the dedicated visualizer
 docs instead of this README.
+
+## Training
+
+There are now two recommended training entry points:
+
+- CLI training:
+  `python run_ultranerf.py --config <config.txt>`
+- standalone GUI training:
+  `python run_training_gui.py`
+
+Use these docs instead of the README for the actual workflow details:
+
+- CLI training: [`docs/TRAINING_CLI.md`](docs/TRAINING_CLI.md)
+- training config and schemes: [`docs/TRAINING_CONFIG.md`](docs/TRAINING_CONFIG.md)
+- GUI training: [`docs/GUI_TRAINING_WORKFLOW.md`](docs/GUI_TRAINING_WORKFLOW.md)
 
 ### Main training and evaluation scripts
 
