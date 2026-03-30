@@ -47,9 +47,20 @@ def import_nerf_runtime() -> NerfRuntime:
     )
 
 
-def pose_mm_to_model_pose_m(pose_probe_to_world_mm: np.ndarray) -> np.ndarray:
-    """Convert a visualization-space pose in millimeters into model-space meters."""
+def pose_mm_to_model_pose_m(
+    pose_probe_to_world_mm: np.ndarray,
+    probe_geometry: ProbeGeometry | None = None,
+) -> np.ndarray:
+    """Convert a visualization-space pose in millimeters into model-space meters.
+
+    For convex probes, the GUI pose is interpreted at the midpoint of the inner
+    arc. The training/runtime renderer expects the pose origin at the fan
+    center, so the pose must be shifted backward along the local +Y axis by the
+    inner radius before converting millimeters to meters.
+    """
     pose_mm = ensure_pose_matrix(pose_probe_to_world_mm).astype(np.float32).copy()
+    if probe_geometry is not None and probe_geometry.is_convex:
+        pose_mm[:3, 3] -= pose_mm[:3, 1] * float(probe_geometry.convex_inner_radius_mm)
     pose_mm[:3, 3] *= 0.001
     return pose_mm
 
@@ -230,7 +241,7 @@ class NerfSession:
         render_geometry = self._resolve_render_geometry(probe_geometry_override)
         image_shape = self._resolve_render_shape(render_geometry)
         sw_m, sh_m, far_m = self._resolve_render_spacing_and_far(render_geometry, image_shape)
-        pose_m = pose_mm_to_model_pose_m(pose_probe_to_world_mm)
+        pose_m = pose_mm_to_model_pose_m(pose_probe_to_world_mm, probe_geometry=render_geometry)
         pose_tensor = self.runtime.torch.from_numpy(pose_m[:3, :4]).to(self.device).unsqueeze(0)
         kwargs = dict(self.render_kwargs)
         kwargs.update(render_overrides)

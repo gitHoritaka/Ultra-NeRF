@@ -75,6 +75,30 @@ def test_pose_mm_to_model_pose_m_scales_translation_only():
     assert np.allclose(pose_m[:3, 3], np.array([0.01, 0.02, 0.03], dtype=np.float32))
 
 
+def test_pose_mm_to_model_pose_m_shifts_convex_pose_from_inner_arc_to_fan_center():
+    pose_mm = np.eye(4, dtype=np.float32)
+    pose_mm[:3, 3] = np.array([10.0, 20.0, 30.0], dtype=np.float32)
+    geometry = ProbeGeometry(
+        width_mm=125.0,
+        depth_mm=160.0,
+        probe_type="convex",
+        convex_center_x=50.0,
+        convex_center_y=10.0,
+        convex_angle_deg=35.0,
+        convex_outer_radius_px=100.0,
+        convex_inner_radius_px=20.0,
+        convex_scale_x_mm=0.4,
+        convex_scale_y_mm=0.4,
+        convex_n_rays=6,
+        convex_n_samples=7,
+    )
+
+    pose_m = pose_mm_to_model_pose_m(pose_mm, probe_geometry=geometry)
+
+    expected_translation_mm = np.array([10.0, 20.0 - geometry.convex_inner_radius_mm, 30.0], dtype=np.float32)
+    assert np.allclose(pose_m[:3, 3], expected_translation_mm * 0.001)
+
+
 def test_nerf_session_from_checkpoint_computes_meter_scale_probe_spacing():
     call_log = {}
     runtime = make_runtime(call_log)
@@ -167,6 +191,53 @@ def test_nerf_session_remaps_convex_outputs_for_display():
 
     assert call_log["render_shape"] == (7, 6)
     assert tuple(rendered["intensity_map"].shape) == (1, 1, 12, 12)
+
+
+def test_nerf_session_render_pose_shifts_convex_pose_before_runtime_call():
+    call_log = {}
+
+    def render_us(H, W, sw, sh, c2w=None, chunk=None, **kwargs):
+        call_log["c2w"] = c2w.detach().cpu().numpy()
+        return {"intensity_map": torch.ones((1, 1, H, W), dtype=torch.float32)}
+
+    runtime = NerfRuntime(
+        torch=torch,
+        config_parser=lambda: FakeConvexParser(),
+        create_nerf=make_runtime(call_log).create_nerf,
+        render_us=render_us,
+    )
+    geometry = ProbeGeometry(
+        width_mm=125.0,
+        depth_mm=160.0,
+        probe_type="convex",
+        convex_center_x=50.0,
+        convex_center_y=10.0,
+        convex_angle_deg=35.0,
+        convex_outer_radius_px=100.0,
+        convex_inner_radius_px=20.0,
+        convex_scale_x_mm=0.4,
+        convex_scale_y_mm=0.4,
+        convex_n_rays=6,
+        convex_n_samples=7,
+    )
+    session = NerfSession.from_checkpoint(
+        config_path="configs/config_base_nerf.txt",
+        checkpoint_path="logs/example/001000.tar",
+        image_shape=(14, 12),
+        display_image_shape=(12, 12),
+        probe_geometry=geometry,
+        probe_width_mm=geometry.width_mm,
+        probe_depth_mm=geometry.depth_mm,
+        device="cpu",
+        runtime=runtime,
+    )
+    pose_mm = np.eye(4, dtype=np.float32)
+    pose_mm[:3, 3] = np.array([0.0, 50.0, 0.0], dtype=np.float32)
+
+    session.render_pose(pose_mm)
+
+    expected_y_m = (50.0 - geometry.convex_inner_radius_mm) * 0.001
+    assert np.isclose(float(call_log["c2w"][0, 1, 3]), expected_y_m)
 
 
 def test_nerf_session_accepts_probe_geometry_override_for_rendering():
