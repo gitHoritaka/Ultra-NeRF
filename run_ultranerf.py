@@ -186,6 +186,9 @@ def train():
         images, poses, i_test = load_us_data(
             args.datadir, confmap=args.confmap, pose_path=args.pose_path
         )
+        all_indices = np.arange(images.shape[0])
+        i_test = all_indices[::10].tolist()  # [0, 10, 20, 30, ...]
+
         i_train, i_val, explicit_split = _select_training_and_validation_indices(
             args,
             frame_count=int(images.shape[0]),
@@ -262,6 +265,14 @@ def train():
     print("TRAIN views are", i_train)
     print("TEST views are", i_test)
     print("VAL views are", i_val)
+
+    N_splits = 20  # Training を20分割
+    steps_per_split = max(1, N_iters // N_splits) 
+    shuffled_i_train = np.random.permutation(i_train) 
+
+    val_loss_history = []
+    pool_percentages_history = []
+
     _append_progress_event(
         Path(basedir) / expname,
         {
@@ -298,8 +309,15 @@ def train():
     for i in trange(start, N_iters + 1):
         time0 = time.time()
 
+        current_split_idx = min(N_splits - 1, (i - 1) // steps_per_split)
+        current_percentage = (current_split_idx + 1) / N_splits
+        current_pool_size = max(1, int(len(i_train) * current_percentage))
+        
+        # 現在のフェーズでアクセス可能な画像のサブセット
+        active_train_pool = shuffled_i_train[:current_pool_size]
+
         img_i = np.random.choice(
-            i_train
+           active_train_pool 
         )  # Why? This does not guarantee that all images are used --> probably a weighted random would be better,
         # or removing from a temporary set as long as it's not empty
 
@@ -458,6 +476,30 @@ def train():
                 },
             )
 
+        if i % steps_per_split == 0 or i == N_iters:
+            print(f"\n[Phase {current_split_idx + 1}/{N_splits}] Evaluating Val Loss (Pool: {current_percentage*100:.1f}%, {current_pool_size}/{len(i_train)} imgs)...")
+            val_losses = []
+            with torch.no_grad():
+                for v_idx in i_val:
+                    v_target_arr = images[v_idx]
+                    if probe_geometry.is_convex:
+                        v_target_arr = remap_image_to_convex_grid(v_target_arr, probe_geometry)
+                    v_target = torch.Tensor(v_target_arr).to(device).unsqueeze(0).unsqueeze(0)
+                    v_pose = torch.from_numpy(poses[v_idx, :3, :4]).to(device).unsqueeze(0)
+                    
+                    v_out = render_us(H, W, sw, sh, c2w=v_pose, chunk=args.chunk, retraw=True, **render_kwargs_test)
+                    v_loss_dict = compute_loss(v_out["intensity_map"], v_target, args, losses, i, training_scheme=training_scheme)
+                    v_tot = sum(lv[0] * lv[1] for lv in v_loss_dict.values())
+                    val_losses.append(v_tot.item())
+            
+            mean_v_loss = np.mean(val_losses)
+            val_loss_history.append(mean_v_loss)
+            pool_percentages_history.append(current_percentage * 100)
+            
+            print(f"--> Mean Val Loss: {mean_v_loss:.6f}")
+            if args.tensorboard:
+                writer.add_scalar("Experiment/Validation_Loss", mean_v_loss, i)
+
     _append_progress_event(
         Path(basedir) / expname,
         {
@@ -466,6 +508,20 @@ def train():
             "total_steps": int(N_iters),
         },
     )
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(pool_percentages_history, val_loss_history, marker='o', linestyle='-', color='b')
+    plt.title("Validation Loss vs Active Training Data Pool")
+    plt.xlabel("Percentage of Data Used (%)")
+    plt.ylabel("Mean Validation Loss")
+    plt.grid(True)
+    plot_path = os.path.join(basedir, expname, "data_efficiency_curve.png")
+    plt.savefig(plot_path, bbox_inches="tight", dpi=200)
+    plt.close()
+    
+    with open(os.path.join(basedir, expname, "data_efficiency_results.json"), "w") as f:
+        json.dump({"percentages": pool_percentages_history, "val_losses": val_loss_history}, f, indent=4)
+    print(f"\n[Success] Data efficiency plot saved to {plot_path}")
 
 
 if __name__ == "__main__":

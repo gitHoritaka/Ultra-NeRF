@@ -4,6 +4,8 @@ datadir = data/synthetic_testing/l2
 dataset_type = us
 output_ch = 5
 
+n_iters = 100000
+
 N_samples = 512
 
 i_embed = 6
